@@ -9,9 +9,10 @@
 //! Storage is 32-row SIMD-tiled for AVX2 alignment.
 
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 /// Packed ternary weight matrix with per-row scale factors.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TernaryMatrix {
     /// Packed ternary data: 4 trits per byte, 32-row tiled.
     packed: Vec<u8>,

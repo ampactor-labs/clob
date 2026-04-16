@@ -3,6 +3,7 @@
 //! Embed → [Block × L] → FinalNorm → LM Head.
 //! O(1) decode memory. Zero heap allocations on the hot path.
 
+use crate::crystal::module::CrystalModule;
 use crate::model::block::Block;
 use crate::model::config::KernelConfig;
 use crate::nn::embed::Embedding;
@@ -23,6 +24,13 @@ pub struct CoreModel {
     last_hidden: Tensor,
     buf_x: Tensor,
     buf_logits: Tensor,
+    /// Crystallized knowledge modules, applied after final_norm.
+    /// Additive, scaled by cosine similarity to each module's domain signature.
+    crystal_modules: Vec<CrystalModule>,
+    /// Minimum cosine similarity for a module to activate.
+    pub crystal_activation_threshold: f32,
+    /// Scratch buffer for module outputs (d_model).
+    buf_module_out: Tensor,
 }
 
 impl CoreModel {
@@ -38,6 +46,7 @@ impl CoreModel {
         let buf_x = Tensor::zeros(&[config.d_model]);
         let buf_logits = Tensor::zeros(&[config.vocab_size]);
 
+        let buf_module_out = Tensor::zeros(&[config.d_model]);
         Self {
             config: config.clone(),
             embedding,
@@ -48,6 +57,9 @@ impl CoreModel {
             last_hidden,
             buf_x,
             buf_logits,
+            crystal_modules: Vec::new(),
+            crystal_activation_threshold: 0.3,
+            buf_module_out,
         }
     }
 
@@ -63,10 +75,59 @@ impl CoreModel {
         let last_hidden = Tensor::zeros(&[config.d_model]);
         let buf_x = Tensor::zeros(&[config.d_model]);
         let buf_logits = Tensor::zeros(&[config.vocab_size]);
+        let buf_module_out = Tensor::zeros(&[config.d_model]);
         Self {
             config: config.clone(), embedding, blocks, final_norm,
             energy_critic, dispatch, last_hidden, buf_x, buf_logits,
+            crystal_modules: Vec::new(),
+            crystal_activation_threshold: 0.3,
+            buf_module_out,
         }
+    }
+
+    /// Install a crystallized knowledge module.
+    /// Module's d_model must match this model's d_model.
+    pub fn push_crystal_module(&mut self, module: CrystalModule) {
+        assert_eq!(
+            module.d_model, self.config.d_model,
+            "crystal module d_model {} != core d_model {}",
+            module.d_model, self.config.d_model,
+        );
+        self.crystal_modules.push(module);
+    }
+
+    /// Number of installed crystal modules.
+    pub fn n_crystal_modules(&self) -> usize {
+        self.crystal_modules.len()
+    }
+
+    /// Remove all installed modules (for A/B evaluation).
+    pub fn clear_crystal_modules(&mut self) {
+        self.crystal_modules.clear();
+    }
+
+    /// Apply all matching crystal modules to the current `buf_x` (post-final-norm
+    /// hidden state). Additive, routed by cosine similarity to each module's
+    /// domain signature. Returns the number of modules that activated.
+    fn apply_crystal_modules(&mut self) -> usize {
+        if self.crystal_modules.is_empty() { return 0; }
+        let threshold = self.crystal_activation_threshold;
+        let mut activated = 0;
+        for module in &mut self.crystal_modules {
+            let similarity = module.domain_match_slice(self.buf_x.data());
+            if similarity > threshold {
+                self.buf_module_out.zero_();
+                module.apply(&self.buf_x, &mut self.buf_module_out, &self.dispatch);
+                let scale = similarity.min(1.0);
+                for (h, m) in self.buf_x.data_mut().iter_mut()
+                    .zip(self.buf_module_out.data().iter())
+                {
+                    *h += scale * m;
+                }
+                activated += 1;
+            }
+        }
+        activated
     }
 
     /// Process a single token. Returns logits.
@@ -78,6 +139,7 @@ impl CoreModel {
         }
 
         self.final_norm.forward(&mut self.buf_x, &self.dispatch);
+        self.apply_crystal_modules();
         self.last_hidden.copy_from(&self.buf_x);
         self.embedding.unembed(&self.buf_x, &mut self.buf_logits);
 
@@ -124,5 +186,10 @@ impl CoreModel {
     /// Reference to dispatch.
     pub fn dispatch(&self) -> &KernelDispatch {
         &self.dispatch
+    }
+
+    /// Tied embed/unembed table, row-major [vocab_size × d_model].
+    pub fn embed_table(&self) -> &[f32] {
+        self.embedding.table()
     }
 }

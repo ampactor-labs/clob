@@ -9,6 +9,7 @@ use crate::simd::KernelDispatch;
 use serde::{Deserialize, Serialize};
 
 /// A crystallized knowledge module.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CrystalModule {
     /// Unique module ID.
     pub id: u64,
@@ -41,12 +42,28 @@ impl CrystalModule {
 
     /// Cosine similarity between input and this module's domain.
     pub fn domain_match(&self, hidden: &Tensor) -> f32 {
+        self.domain_match_slice(hidden.data())
+    }
+
+    /// Cosine similarity against a raw slice (avoids a Tensor wrapper).
+    pub fn domain_match_slice(&self, hidden: &[f32]) -> f32 {
         assert_eq!(hidden.len(), self.d_model);
-        let dot: f32 = hidden.data().iter().zip(self.domain_signature.iter())
+        let dot: f32 = hidden.iter().zip(self.domain_signature.iter())
             .map(|(a, b)| a * b).sum();
-        let na: f32 = hidden.data().iter().map(|v| v * v).sum::<f32>().sqrt();
+        let na: f32 = hidden.iter().map(|v| v * v).sum::<f32>().sqrt();
         let nb: f32 = self.domain_signature.iter().map(|v| v * v).sum::<f32>().sqrt();
         if na > 0.0 && nb > 0.0 { dot / (na * nb) } else { 0.0 }
+    }
+
+    /// Serialize this module to bytes (bincode).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("serialize crystal module")
+    }
+
+    /// Deserialize from bytes.
+    pub fn from_bytes(bytes: &[u8]) -> std::io::Result<Self> {
+        bincode::deserialize(bytes)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
     /// Metadata for serialization.

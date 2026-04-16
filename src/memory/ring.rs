@@ -31,8 +31,6 @@ struct RingIndex {
 struct EpisodeRef {
     /// File path for this episode.
     path: PathBuf,
-    /// Energy score (for quick filtering).
-    energy: f32,
     /// Whether consumed by crystallization.
     consumed: bool,
     /// Approximate size in bytes.
@@ -54,7 +52,6 @@ impl EpisodicMemory {
                         if let Some(ep) = Episode::from_bytes(&data) {
                             episodes.push(EpisodeRef {
                                 path,
-                                energy: ep.energy,
                                 consumed: ep.consumed,
                                 size: data.len(),
                             });
@@ -93,7 +90,6 @@ impl EpisodicMemory {
                 let _ = fs::remove_file(&old.path);
                 index.episodes[evict_idx] = EpisodeRef {
                     path: path.clone(),
-                    energy: episode.energy,
                     consumed: false,
                     size: bytes.len(),
                 };
@@ -101,7 +97,6 @@ impl EpisodicMemory {
         } else {
             index.episodes.push(EpisodeRef {
                 path: path.clone(),
-                energy: episode.energy,
                 consumed: false,
                 size: bytes.len(),
             });

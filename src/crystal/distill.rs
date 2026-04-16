@@ -26,10 +26,24 @@ pub struct DistilledPattern {
 }
 
 /// Attempt to distill a cluster into a pattern.
-/// Returns None if the MDL check fails (not worth crystallizing).
-pub fn distill(cluster: &Cluster, episodes: &[Episode]) -> Option<DistilledPattern> {
+///
+/// `embed_table` is the model's tied embed/unembed matrix, row-major `[vocab × d]`.
+/// When present, the correction direction is the gradient-aligned
+/// `avg(embed[actual] - h)` — pushing the hidden state toward the actual token's
+/// row so unembed(hidden) assigns higher probability to `actual`.
+/// When absent, falls back to a pure hidden-centroid deviation (weaker signal,
+/// ignores `actual_token`; kept only for diagnostics).
+///
+/// Returns None if the MDL check fails (not worth crystallizing) or the
+/// cluster has fewer than 3 episodes.
+pub fn distill(
+    cluster: &Cluster,
+    episodes: &[Episode],
+    embed_table: Option<&[f32]>,
+    vocab_size: usize,
+) -> Option<DistilledPattern> {
     if cluster.episode_indices.len() < 3 {
-        return None; // Need at least 3 episodes to form a meaningful pattern
+        return None;
     }
 
     let d = episodes[0].hidden_state.len();
@@ -44,23 +58,36 @@ pub fn distill(cluster: &Cluster, episodes: &[Episode]) -> Option<DistilledPatte
     }
     for v in avg_input.iter_mut() { *v /= n as f32; }
 
-    // Compute average correction delta
-    // The "correction" is the difference between what was predicted (centroid)
-    // and what should have been predicted. In practice, we use the prediction
-    // error pattern: high error episodes in the same region of hidden space
-    // indicate a systematic bias.
+    // Compute average correction delta.
+    // Preferred target: direction that increases log P(actual) under tied unembed.
+    //   correction_i = embed[actual_i] - h_i    (gradient of logit[actual] w.r.t. h, up to softmax term)
+    // Weight by prediction_error so high-error episodes dominate.
     let mut avg_correction = vec![0.0f32; d];
     let mut total_error = 0.0f32;
     for &i in &cluster.episode_indices {
         let ep = &episodes[i];
         let error_weight = ep.prediction_error;
+        if error_weight <= 0.0 { continue; }
         total_error += error_weight;
 
-        // Direction of the correction: difference between episode's hidden state and centroid
-        for (c, (h, cen)) in avg_correction.iter_mut()
-            .zip(ep.hidden_state.iter().zip(cluster.centroid.iter()))
-        {
-            *c += error_weight * (h - cen);
+        match embed_table {
+            Some(table) if (ep.actual_token as usize) < vocab_size => {
+                let row_start = ep.actual_token as usize * d;
+                let row = &table[row_start..row_start + d];
+                for (c, (h, e)) in avg_correction.iter_mut()
+                    .zip(ep.hidden_state.iter().zip(row.iter()))
+                {
+                    *c += error_weight * (e - h);
+                }
+            }
+            _ => {
+                // Fallback: hidden-state deviation from centroid.
+                for (c, (h, cen)) in avg_correction.iter_mut()
+                    .zip(ep.hidden_state.iter().zip(cluster.centroid.iter()))
+                {
+                    *c += error_weight * (h - cen);
+                }
+            }
         }
     }
     if total_error > 0.0 {

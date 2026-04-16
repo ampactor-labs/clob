@@ -64,10 +64,25 @@ impl CrystallizationEngine {
         }
     }
 
+    /// Set the starting id for newly crystallized modules. Call after loading
+    /// existing modules so IDs don't collide with on-disk files.
+    pub fn set_next_id(&mut self, id: u64) {
+        self.next_id = id;
+    }
+
     /// Run one crystallization cycle.
     ///
+    /// `embed_table` is the model's tied embed/unembed matrix, row-major
+    /// `[vocab × d_model]`. Without it, the distiller falls back to a weaker
+    /// hidden-centroid correction that ignores `actual_token`.
+    ///
     /// Returns the number of new modules crystallized.
-    pub fn cycle(&mut self, memory: &EpisodicMemory) -> usize {
+    pub fn cycle(
+        &mut self,
+        memory: &EpisodicMemory,
+        embed_table: Option<&[f32]>,
+        vocab_size: usize,
+    ) -> usize {
         let stats = memory.stats();
         if stats.unconsumed < self.config.min_episodes {
             return 0;
@@ -95,7 +110,7 @@ impl CrystallizationEngine {
 
         for cl in &clusters {
             // Attempt distillation
-            if let Some(pattern) = distill::distill(cl, &episodes) {
+            if let Some(pattern) = distill::distill(cl, &episodes, embed_table, vocab_size) {
                 eprintln!("[crystal] Distilled pattern: {} episodes, avg_error={:.4}, mdl_ratio={:.4}",
                     pattern.n_episodes, pattern.avg_error, pattern.mdl_ratio);
 
@@ -150,6 +165,9 @@ impl CrystallizationEngine {
 
     /// Number of crystallized modules.
     pub fn n_modules(&self) -> usize { self.modules.len() }
+
+    /// All crystallized modules.
+    pub fn modules(&self) -> &[CrystalModule] { &self.modules }
 
     /// Total activation count across all modules.
     pub fn total_activations(&self) -> u64 {

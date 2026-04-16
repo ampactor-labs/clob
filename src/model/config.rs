@@ -41,6 +41,21 @@ impl KernelConfig {
         }
     }
 
+    /// Small config suitable for a 512-merge BPE tokenizer (d=128, L=4, V=1024).
+    pub fn small() -> Self {
+        Self {
+            d_model: 128,
+            n_layers: 4,
+            d_state: 16,
+            n_heads: 4,
+            d_inner: 256,
+            n_experts: 4,
+            n_active_experts: 2,
+            vocab_size: 1024,
+            moe_layers: vec![2],
+        }
+    }
+
     /// Seed config for the T490 boot (d=512, L=8, V=4096).
     pub fn seed() -> Self {
         Self {

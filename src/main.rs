@@ -3,6 +3,7 @@
 use clap::{Parser, Subcommand};
 use clob::crystal::detector::NoveltyDetector;
 use clob::crystal::engine::{CrystalConfig, CrystallizationEngine};
+use clob::crystal::store;
 use clob::io;
 use clob::memory::episode::Episode;
 use clob::memory::ring::EpisodicMemory;
@@ -12,7 +13,7 @@ use clob::model::stack::CoreModel;
 use clob::token::bpe::BpeTokenizer;
 use rand::SeedableRng;
 use rand::Rng;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
@@ -60,6 +61,9 @@ enum Commands {
         temperature: f32,
         #[arg(long)]
         tokenizer: Option<PathBuf>,
+        /// Load crystal modules from this directory.
+        #[arg(long)]
+        modules_dir: Option<PathBuf>,
     },
     /// Generate a synthetic model.
     Synth {
@@ -102,6 +106,7 @@ enum Commands {
         n_merges: usize,
     },
     /// Process a file through the kernel (non-interactive).
+    /// Streams tokens; records true prediction errors for each next-token prediction.
     Ingest {
         #[arg(long)]
         model: PathBuf,
@@ -112,8 +117,48 @@ enum Commands {
         memory_dir: PathBuf,
         #[arg(long)]
         tokenizer: Option<PathBuf>,
+        /// Load existing crystal modules from this directory before ingesting.
+        #[arg(long)]
+        modules_dir: Option<PathBuf>,
+        /// Cap on tokens to ingest (0 = unlimited).
+        #[arg(long, default_value_t = 0)]
+        max_tokens: usize,
     },
-    /// Compile crystallized modules to native code.
+    /// Evaluate: compute per-token cross-entropy / perplexity on a corpus.
+    /// The falsifiable test: does adding crystal modules reduce NLL?
+    Eval {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Load crystal modules from this directory before evaluating.
+        #[arg(long)]
+        modules_dir: Option<PathBuf>,
+        /// Cap on tokens to evaluate (0 = unlimited).
+        #[arg(long, default_value_t = 0)]
+        max_tokens: usize,
+    },
+    /// Run one crystallization cycle over stored episodes; write new modules to disk.
+    /// Supply --model to use gradient-aligned correction (recommended).
+    /// Supply --d-model alone to fall back to hidden-centroid correction (weaker, ignores actual_token).
+    Crystal {
+        #[arg(long, default_value = "episodes")]
+        memory_dir: PathBuf,
+        #[arg(long, default_value = "modules")]
+        modules_dir: PathBuf,
+        /// Model that produced these episodes (enables tied-unembed correction direction).
+        #[arg(long)]
+        model: Option<PathBuf>,
+        /// d_model when `--model` is not provided.
+        #[arg(long)]
+        d_model: Option<usize>,
+        /// Number of clusters (k) for k-means.
+        #[arg(long, default_value_t = 8)]
+        n_clusters: usize,
+    },
+    /// Compile crystallized modules to native code (demo: ELF emission).
     Compile {
         #[arg(long, default_value = "episodes")]
         memory_dir: PathBuf,
@@ -160,8 +205,8 @@ fn main() {
         Commands::Boot { memory_dir, modules_dir, model, config, seed, memory_capacity, tokenizer, listen, peer } => {
             cmd_boot(&memory_dir, &modules_dir, &model, &config, seed, memory_capacity, &tokenizer, &listen, &peer);
         }
-        Commands::Think { model, max_tokens, temperature, tokenizer } => {
-            cmd_think(&model, max_tokens, temperature, &tokenizer);
+        Commands::Think { model, max_tokens, temperature, tokenizer, modules_dir } => {
+            cmd_think(&model, max_tokens, temperature, &tokenizer, &modules_dir);
         }
         Commands::Synth { output, config, seed } => {
             cmd_synth(&output, &config, seed);
@@ -178,8 +223,21 @@ fn main() {
         Commands::TrainTokenizer { corpus, output, n_merges } => {
             cmd_train_tokenizer(&corpus, &output, n_merges);
         }
-        Commands::Ingest { model, input, memory_dir, tokenizer } => {
-            cmd_ingest(&model, &input, &memory_dir, &tokenizer);
+        Commands::Ingest { model, input, memory_dir, tokenizer, modules_dir, max_tokens } => {
+            cmd_ingest(&model, &input, &memory_dir, &tokenizer, &modules_dir, max_tokens);
+        }
+        Commands::Eval { model, corpus, tokenizer, modules_dir, max_tokens } => {
+            cmd_eval(&model, &corpus, &tokenizer, &modules_dir, max_tokens);
+        }
+        Commands::Crystal { memory_dir, modules_dir, model, d_model, n_clusters } => {
+            match (model, d_model) {
+                (Some(m), _) => cmd_crystal_with_model(&memory_dir, &modules_dir, &m, n_clusters),
+                (None, Some(d)) => cmd_crystal(&memory_dir, &modules_dir, d, n_clusters),
+                (None, None) => {
+                    eprintln!("[crystal] provide --model (preferred) or --d-model");
+                    std::process::exit(2);
+                }
+            }
         }
         Commands::Compile { memory_dir: _, modules_dir } => {
             cmd_compile(&modules_dir);
@@ -199,9 +257,10 @@ fn main() {
 fn parse_config(name: &str) -> KernelConfig {
     match name {
         "tiny" => KernelConfig::tiny(),
+        "small" => KernelConfig::small(),
         "seed" => KernelConfig::seed(),
         other => {
-            eprintln!("[kernel] Unknown config '{}'. Use 'tiny' or 'seed'.", other);
+            eprintln!("[kernel] Unknown config '{}'. Use 'tiny', 'small', or 'seed'.", other);
             KernelConfig::tiny()
         }
     }
@@ -239,17 +298,75 @@ fn now_nanos() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
 }
 
+/// Hard-fail if the tokenizer produces ids the model can't represent.
+/// No silent clamping — a collapsed vocab is a poisoned training signal.
+fn assert_vocab_compatible(tokenizer: &BpeTokenizer, config: &KernelConfig) {
+    if tokenizer.vocab_size() > config.vocab_size {
+        eprintln!(
+            "[error] tokenizer vocab ({}) > model vocab ({}). Retrain the tokenizer with \
+             --n-merges that keep vocab ≤ {}, or synth a model with matching vocab.",
+            tokenizer.vocab_size(), config.vocab_size, config.vocab_size,
+        );
+        std::process::exit(2);
+    }
+}
+
+/// Load crystal modules from a directory into the model. Returns count loaded.
+fn load_modules_into(model: &mut CoreModel, dir: &Path) -> usize {
+    match store::load_modules(dir) {
+        Ok(modules) => {
+            let mut ok = 0;
+            let mut skipped = 0;
+            for m in modules {
+                if m.d_model != model.config.d_model {
+                    eprintln!(
+                        "[modules] skipping id={} (d_model {} != {})",
+                        m.id, m.d_model, model.config.d_model,
+                    );
+                    skipped += 1;
+                    continue;
+                }
+                model.push_crystal_module(m);
+                ok += 1;
+            }
+            if skipped > 0 {
+                eprintln!("[modules] loaded {} ({} skipped) from {:?}", ok, skipped, dir);
+            } else {
+                eprintln!("[modules] loaded {} from {:?}", ok, dir);
+            }
+            ok
+        }
+        Err(e) => {
+            eprintln!("[modules] {:?}: {}", dir, e);
+            0
+        }
+    }
+}
+
+/// Softmax-probability of a single class from raw logits.
+/// Numerically stable (max-subtracted). Returns 0 if token id is out of range.
+fn prob_of_token(logits: &[f32], token: u32) -> f32 {
+    let tok = token as usize;
+    if tok >= logits.len() { return 0.0; }
+    let max = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let mut sum = 0.0f32;
+    for &l in logits { sum += (l - max).exp(); }
+    if sum <= 0.0 { return 0.0; }
+    ((logits[tok] - max).exp()) / sum
+}
+
 // ============================================================================
 // Commands
 // ============================================================================
 
 fn cmd_boot(
-    memory_dir: &PathBuf, _modules_dir: &PathBuf, model_path: &PathBuf,
+    memory_dir: &PathBuf, modules_dir: &PathBuf, model_path: &PathBuf,
     config_str: &str, seed: u64, memory_capacity: usize,
     tokenizer_path: &Option<PathBuf>, _listen: &Option<String>, _peers: &[String],
 ) {
     let config = parse_config(config_str);
     let tokenizer = load_tokenizer(tokenizer_path);
+    assert_vocab_compatible(&tokenizer, &config);
 
     eprintln!("[kernel] Config: d_model={}, n_layers={}, vocab={}, params=~{}",
         config.d_model, config.n_layers, config.vocab_size, format_params(config.param_count_estimate()));
@@ -267,13 +384,17 @@ fn cmd_boot(
         model
     };
 
+    if modules_dir.exists() {
+        load_modules_into(&mut model, modules_dir);
+    }
+
     let memory = EpisodicMemory::open(memory_dir, memory_capacity)
         .expect("failed to open episodic memory");
     let mut crystal_engine = CrystallizationEngine::new(config.d_model, CrystalConfig::default());
-    let mut novelty_detector = NoveltyDetector::new();
 
     eprintln!("\n=== THE KERNEL IS ALIVE ===\n");
-    eprintln!("Commands: :status, :crystal, :reset, :quit\n");
+    eprintln!("Commands: :status, :crystal, :reset, :quit");
+    eprintln!("Modules installed: {}\n", model.n_crystal_modules());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let sampling = SamplingConfig { temperature: 0.7, top_k: 50, top_p: 0.9 };
@@ -294,14 +415,28 @@ fn cmd_boot(
                 eprintln!("[status] Memory: {}/{} ({} unconsumed, {:.2} MB)",
                     mem_stats.total_episodes, mem_stats.capacity,
                     mem_stats.unconsumed, mem_stats.total_bytes as f64 / (1024.0 * 1024.0));
-                eprintln!("[status] Crystal: {}", crystal_engine.stats());
-                eprintln!("[status] Novelty baseline: {:.4}", novelty_detector.baseline());
+                eprintln!("[status] Crystal (session): {}", crystal_engine.stats());
+                eprintln!("[status] Installed modules: {}", model.n_crystal_modules());
                 continue;
             }
             ":crystal" => {
                 eprintln!("[crystal] Running crystallization cycle...");
-                let n = crystal_engine.cycle(&memory);
-                eprintln!("[crystal] Crystallized {} new modules. {}", n, crystal_engine.stats());
+                let before = crystal_engine.n_modules();
+                let n = {
+                    // Separate the embedding borrow from the mutable push below.
+                    let embed_snapshot: Vec<f32> = model.embed_table().to_vec();
+                    crystal_engine.cycle(&memory, Some(&embed_snapshot), model.config.vocab_size)
+                };
+                let after = crystal_engine.n_modules();
+                let new_modules: Vec<_> = crystal_engine.modules()[before..after].to_vec();
+                for module in new_modules {
+                    if let Ok(path) = store::save_module(&module, modules_dir) {
+                        eprintln!("[crystal] saved {:?}", path);
+                    }
+                    model.push_crystal_module(module);
+                }
+                eprintln!("[crystal] {} new modules (session total {}, installed {})",
+                    n, crystal_engine.n_modules(), model.n_crystal_modules());
                 continue;
             }
             ":reset" => {
@@ -313,37 +448,12 @@ fn cmd_boot(
             _ => {}
         }
 
-        // Tokenize
-        let input_tokens: Vec<u32> = tokenizer.encode(input).iter()
-            .map(|&t| t.min(config.vocab_size as u32 - 1))
-            .collect();
-
+        let input_tokens: Vec<u32> = tokenizer.encode(input);
         let start = Instant::now();
-        let logits = model.prefill(&input_tokens);
+        let _logits = model.prefill(&input_tokens);
         context_tokens.extend_from_slice(&input_tokens);
 
         let (energy, is_novel) = model.energy_score_and_detect();
-        let novelty = novelty_detector.evaluate(energy);
-
-        if novelty.is_novel {
-            let mut probs = logits.clone();
-            probs.softmax_();
-            let top_k: Vec<(u32, f32)> = {
-                let mut indexed: Vec<(u32, f32)> = probs.data().iter().enumerate()
-                    .map(|(i, &p)| (i as u32, p)).collect();
-                indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-                indexed.truncate(10);
-                indexed
-            };
-            let episode = Episode::new(
-                now_nanos(), context_tokens.clone(),
-                model.last_hidden().data().to_vec(),
-                energy, top_k, 0,
-            );
-            if let Err(e) = memory.store(&episode) {
-                eprintln!("[memory] store error: {}", e);
-            }
-        }
 
         let generated = generate::generate(&mut model, &[], 64, &sampling, &mut rng);
         let elapsed = start.elapsed();
@@ -358,16 +468,24 @@ fn cmd_boot(
             generated.len() as f64 / elapsed.as_secs_f64(),
             energy,
             if is_novel { "▲" } else { "○" },
-            crystal_engine.n_modules());
+            model.n_crystal_modules());
     }
 }
 
-fn cmd_think(model_path: &PathBuf, max_tokens: usize, temperature: f32, tokenizer_path: &Option<PathBuf>) {
+fn cmd_think(
+    model_path: &PathBuf, max_tokens: usize, temperature: f32,
+    tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
+) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[kernel] Loading model from {:?}", model_path);
     let mut model = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model.config);
+    if let Some(dir) = modules_dir.as_ref() {
+        load_modules_into(&mut model, dir);
+    }
     let config = model.config.clone();
-    eprintln!("[kernel] d={}, L={}, V={}", config.d_model, config.n_layers, config.vocab_size);
+    eprintln!("[kernel] d={}, L={}, V={}, modules={}",
+        config.d_model, config.n_layers, config.vocab_size, model.n_crystal_modules());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sampling = SamplingConfig { temperature, top_k: 50, top_p: 0.9 };
@@ -379,8 +497,7 @@ fn cmd_think(model_path: &PathBuf, max_tokens: usize, temperature: f32, tokenize
         if input == ":quit" || input == ":q" { break; }
         if input.is_empty() { continue; }
 
-        let tokens: Vec<u32> = tokenizer.encode(input).iter()
-            .map(|&t| t.min(config.vocab_size as u32 - 1)).collect();
+        let tokens: Vec<u32> = tokenizer.encode(input);
         let start = Instant::now();
         let _logits = model.prefill(&tokens);
         let generated = generate::generate(&mut model, &[], max_tokens, &sampling, &mut rng);
@@ -489,49 +606,220 @@ fn cmd_train_tokenizer(corpus_path: &PathBuf, output: &PathBuf, n_merges: usize)
     eprintln!("[bpe] Roundtrip: ✓");
 }
 
-fn cmd_ingest(model_path: &PathBuf, input_path: &PathBuf, memory_dir: &PathBuf, tokenizer_path: &Option<PathBuf>) {
+fn cmd_ingest(
+    model_path: &PathBuf, input_path: &PathBuf, memory_dir: &PathBuf,
+    tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
+    max_tokens: usize,
+) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[ingest] Loading model from {:?}", model_path);
     let mut model = io::loader::load_model(model_path).expect("failed to load");
-    let config = model.config.clone();
+    assert_vocab_compatible(&tokenizer, &model.config);
+
+    if let Some(dir) = modules_dir.as_ref() {
+        load_modules_into(&mut model, dir);
+    }
 
     let memory = EpisodicMemory::open(memory_dir, 100_000).expect("failed to open memory");
     let mut novelty_detector = NoveltyDetector::new();
 
-    eprintln!("[ingest] Processing {:?}", input_path);
-    let mut stream = clob::perceive::FileStream::open(input_path).expect("failed to open");
-    let mut total_tokens = 0usize;
+    eprintln!("[ingest] Tokenizing {:?}", input_path);
+    let text = std::fs::read_to_string(input_path).expect("failed to read corpus");
+    let tokens = tokenizer.encode(&text);
+    let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    eprintln!("[ingest] Streaming {} tokens (of {} total)", limit, tokens.len());
+
+    let mut total_nll = 0.0f64;
+    let mut n_predicted = 0usize;
     let mut novel_count = 0usize;
+    let mut module_activations = 0usize;
     let start = Instant::now();
 
-    while let Some(percept) = stream.next_percept(&tokenizer) {
-        if percept.tokens.is_empty() { continue; }
-        let clamped: Vec<u32> = percept.tokens.iter()
-            .map(|&t| t.min(config.vocab_size as u32 - 1)).collect();
-        let _logits = model.prefill(&clamped);
-        total_tokens += clamped.len();
+    // Stream through decode_step one token at a time. Predict token[i+1] from state after token[i].
+    model.reset_state();
+    for i in 0..limit.saturating_sub(1) {
+        let logits = model.decode_step(tokens[i]);
+        let actual = tokens[i + 1];
+        let p_actual = prob_of_token(logits.data(), actual);
+        total_nll += -((p_actual.max(1e-12)) as f64).ln();
+        n_predicted += 1;
 
         let (energy, _) = model.energy_score_and_detect();
         let novelty = novelty_detector.evaluate(energy);
 
         if novelty.is_novel {
+            // Capture top-k predictions for episode
+            let top_k: Vec<(u32, f32)> = {
+                let data = logits.data();
+                let max = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                let sum: f32 = data.iter().map(|l| (l - max).exp()).sum();
+                let mut indexed: Vec<(u32, f32)> = data.iter().enumerate()
+                    .map(|(i, &l)| (i as u32, (l - max).exp() / sum.max(1e-12)))
+                    .collect();
+                indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                indexed.truncate(10);
+                indexed
+            };
+            // Context: up to 32 tokens ending at tokens[i]
+            let ctx_start = i.saturating_sub(31);
+            let context: Vec<u32> = tokens[ctx_start..=i].to_vec();
             let episode = Episode::new(
-                now_nanos(), clamped,
+                now_nanos(), context,
                 model.last_hidden().data().to_vec(),
-                energy, vec![], 0,
+                energy, top_k, actual,
             );
-            let _ = memory.store(&episode);
+            if let Err(e) = memory.store(&episode) {
+                eprintln!("[ingest] store error: {}", e);
+            }
             novel_count += 1;
         }
-        model.reset_state();
+
+        if model.n_crystal_modules() > 0 {
+            module_activations += model.n_crystal_modules();
+        }
     }
 
     let elapsed = start.elapsed();
+    let mean_nll = if n_predicted > 0 { total_nll / n_predicted as f64 } else { 0.0 };
+    let perplexity = mean_nll.exp();
     let mem_stats = memory.stats();
-    eprintln!("[ingest] Done: {} tokens, {} novel episodes, {:.1} tok/s",
-        total_tokens, novel_count, total_tokens as f64 / elapsed.as_secs_f64());
-    eprintln!("[ingest] Memory: {} episodes ({:.2} MB)",
-        mem_stats.total_episodes, mem_stats.total_bytes as f64 / (1024.0 * 1024.0));
+    eprintln!(
+        "[ingest] Done: {} predictions, mean NLL={:.4}, perplexity={:.2}, {:.1} tok/s",
+        n_predicted, mean_nll, perplexity,
+        n_predicted as f64 / elapsed.as_secs_f64(),
+    );
+    eprintln!(
+        "[ingest] Novel: {} episodes stored. Memory: {} episodes ({:.2} MB)",
+        novel_count, mem_stats.total_episodes,
+        mem_stats.total_bytes as f64 / (1024.0 * 1024.0),
+    );
+    if model.n_crystal_modules() > 0 {
+        eprintln!("[ingest] Crystal modules active: {} (total potential activations: {})",
+            model.n_crystal_modules(), module_activations);
+    }
+}
+
+fn cmd_eval(
+    model_path: &PathBuf, corpus_path: &PathBuf,
+    tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
+    max_tokens: usize,
+) {
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[eval] Loading model from {:?}", model_path);
+    let mut model = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model.config);
+
+    let n_modules = if let Some(dir) = modules_dir.as_ref() {
+        load_modules_into(&mut model, dir)
+    } else { 0 };
+
+    eprintln!("[eval] Tokenizing {:?}", corpus_path);
+    let text = std::fs::read_to_string(corpus_path).expect("failed to read corpus");
+    let tokens = tokenizer.encode(&text);
+    let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    eprintln!("[eval] Scoring {} tokens (of {} total) with {} modules",
+        limit, tokens.len(), n_modules);
+
+    let mut total_nll = 0.0f64;
+    let mut n_predicted = 0usize;
+    let start = Instant::now();
+
+    model.reset_state();
+    for i in 0..limit.saturating_sub(1) {
+        let logits = model.decode_step(tokens[i]);
+        let p = prob_of_token(logits.data(), tokens[i + 1]);
+        total_nll += -((p.max(1e-12)) as f64).ln();
+        n_predicted += 1;
+    }
+
+    let elapsed = start.elapsed();
+    let mean_nll = if n_predicted > 0 { total_nll / n_predicted as f64 } else { 0.0 };
+    let perplexity = mean_nll.exp();
+    let uniform_nll = (model.config.vocab_size as f64).ln();
+    eprintln!("[eval] n_tokens={}, mean_nll={:.6}, perplexity={:.4}", n_predicted, mean_nll, perplexity);
+    eprintln!("[eval] (uniform baseline NLL over vocab={} is {:.4})", model.config.vocab_size, uniform_nll);
+    eprintln!("[eval] speed: {:.1} tok/s ({:.2}s total)",
+        n_predicted as f64 / elapsed.as_secs_f64(), elapsed.as_secs_f64());
+
+    // Machine-readable last line for scripting.
+    println!("{{\"n\":{},\"mean_nll\":{:.8},\"perplexity\":{:.6},\"n_modules\":{}}}",
+        n_predicted, mean_nll, perplexity, n_modules);
+}
+
+fn cmd_crystal(memory_dir: &PathBuf, modules_dir: &PathBuf, d_model: usize, n_clusters: usize) {
+    eprintln!("[crystal] Opening memory {:?}", memory_dir);
+    let memory = EpisodicMemory::open(memory_dir, usize::MAX).expect("failed to open memory");
+    let mut engine = CrystallizationEngine::new(d_model, CrystalConfig {
+        n_clusters, ..CrystalConfig::default()
+    });
+    engine.set_next_id(next_module_id(modules_dir));
+    let before = engine.n_modules();
+    // No embedding supplied here; distillation will use the weaker hidden-centroid fallback.
+    // Prefer `crystal` with --model when tied-unembed directions are wanted.
+    let _n = engine.cycle(&memory, None, 0);
+    let after = engine.n_modules();
+
+    let mut saved = 0usize;
+    for module in &engine.modules()[before..after] {
+        match store::save_module(module, modules_dir) {
+            Ok(path) => { eprintln!("[crystal] saved {:?}", path); saved += 1; }
+            Err(e) => eprintln!("[crystal] save error for id={}: {}", module.id, e),
+        }
+    }
+    eprintln!("[crystal] {} new modules saved to {:?}", saved, modules_dir);
+}
+
+fn cmd_crystal_with_model(memory_dir: &PathBuf, modules_dir: &PathBuf, model_path: &PathBuf, n_clusters: usize) {
+    eprintln!("[crystal] Loading model {:?}", model_path);
+    let model = io::loader::load_model(model_path).expect("failed to load model");
+    eprintln!("[crystal] Opening memory {:?}", memory_dir);
+    let memory = EpisodicMemory::open(memory_dir, usize::MAX).expect("failed to open memory");
+
+    let d_model = model.config.d_model;
+    let vocab = model.config.vocab_size;
+    let embed = model.embed_table();
+
+    let mut engine = CrystallizationEngine::new(d_model, CrystalConfig {
+        n_clusters, ..CrystalConfig::default()
+    });
+    // Continue numbering from the highest existing module id on disk, so cycles
+    // accumulate rather than overwrite.
+    let next_id = next_module_id(modules_dir);
+    engine.set_next_id(next_id);
+
+    let before = engine.n_modules();
+    let _n = engine.cycle(&memory, Some(embed), vocab);
+    let after = engine.n_modules();
+
+    let mut saved = 0usize;
+    for module in &engine.modules()[before..after] {
+        match store::save_module(module, modules_dir) {
+            Ok(path) => { eprintln!("[crystal] saved {:?}", path); saved += 1; }
+            Err(e) => eprintln!("[crystal] save error for id={}: {}", module.id, e),
+        }
+    }
+    eprintln!("[crystal] {} new modules saved to {:?} (next_id was {})",
+        saved, modules_dir, next_id);
+}
+
+/// Return the next crystal module id that won't collide with any existing
+/// `module_<id>.mod` file in `dir`. Returns 0 if the directory is empty/missing.
+fn next_module_id(dir: &Path) -> u64 {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+    let mut max_id: Option<u64> = None;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if let Some(stem) = name.strip_prefix("module_").and_then(|s| s.strip_suffix(".mod")) {
+            if let Ok(id) = stem.parse::<u64>() {
+                max_id = Some(max_id.map_or(id, |m| m.max(id)));
+            }
+        }
+    }
+    max_id.map(|m| m + 1).unwrap_or(0)
 }
 
 fn cmd_compile(modules_dir: &PathBuf) {
