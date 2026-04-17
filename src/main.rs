@@ -10,6 +10,7 @@ use clob::memory::ring::EpisodicMemory;
 use clob::model::config::KernelConfig;
 use clob::model::generate::{self, SamplingConfig};
 use clob::model::stack::CoreModel;
+use clob::nn::energy::EnergyCritic;
 use clob::token::bpe::BpeTokenizer;
 use rand::SeedableRng;
 use rand::Rng;
@@ -120,6 +121,9 @@ enum Commands {
         /// Load existing crystal modules from this directory before ingesting.
         #[arg(long)]
         modules_dir: Option<PathBuf>,
+        /// Load a trained energy critic side-file before ingesting.
+        #[arg(long)]
+        critic: Option<PathBuf>,
         /// Cap on tokens to ingest (0 = unlimited).
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
@@ -136,7 +140,33 @@ enum Commands {
         /// Load crystal modules from this directory before evaluating.
         #[arg(long)]
         modules_dir: Option<PathBuf>,
+        /// Load a trained energy critic side-file before evaluating.
+        #[arg(long)]
+        critic: Option<PathBuf>,
         /// Cap on tokens to evaluate (0 = unlimited).
+        #[arg(long, default_value_t = 0)]
+        max_tokens: usize,
+    },
+    /// Train the energy critic online: stream a corpus, SGD the critic on
+    /// MSE against per-step NLL, save it to a side file. No episode storage,
+    /// no module installation. Separate from ingest by design.
+    Calibrate {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Output critic side-file.
+        #[arg(long, default_value = "critic.bin")]
+        output: PathBuf,
+        /// Learning rate.
+        #[arg(long, default_value_t = 1e-4)]
+        lr: f32,
+        /// Number of passes through the corpus.
+        #[arg(long, default_value_t = 1)]
+        epochs: usize,
+        /// Cap on tokens per epoch (0 = unlimited).
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
     },
@@ -223,11 +253,14 @@ fn main() {
         Commands::TrainTokenizer { corpus, output, n_merges } => {
             cmd_train_tokenizer(&corpus, &output, n_merges);
         }
-        Commands::Ingest { model, input, memory_dir, tokenizer, modules_dir, max_tokens } => {
-            cmd_ingest(&model, &input, &memory_dir, &tokenizer, &modules_dir, max_tokens);
+        Commands::Ingest { model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens } => {
+            cmd_ingest(&model, &input, &memory_dir, &tokenizer, &modules_dir, &critic, max_tokens);
         }
-        Commands::Eval { model, corpus, tokenizer, modules_dir, max_tokens } => {
-            cmd_eval(&model, &corpus, &tokenizer, &modules_dir, max_tokens);
+        Commands::Eval { model, corpus, tokenizer, modules_dir, critic, max_tokens } => {
+            cmd_eval(&model, &corpus, &tokenizer, &modules_dir, &critic, max_tokens);
+        }
+        Commands::Calibrate { model, corpus, tokenizer, output, lr, epochs, max_tokens } => {
+            cmd_calibrate(&model, &corpus, &tokenizer, &output, lr, epochs, max_tokens);
         }
         Commands::Crystal { memory_dir, modules_dir, model, d_model, n_clusters } => {
             match (model, d_model) {
@@ -341,6 +374,34 @@ fn load_modules_into(model: &mut CoreModel, dir: &Path) -> usize {
             0
         }
     }
+}
+
+/// Load a trained energy critic from a side file and install it into the model.
+/// Hard-fails on dim mismatch. No-op if the file doesn't exist.
+fn apply_critic_file(model: &mut CoreModel, path: &Path) -> bool {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[critic] {:?}: {}", path, e);
+            return false;
+        }
+    };
+    let critic = match EnergyCritic::from_bytes(&bytes) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[critic] parse {:?}: {}", path, e);
+            return false;
+        }
+    };
+    if critic.dim() != model.config.d_model {
+        eprintln!("[critic] dim {} != model d_model {}; refusing to install",
+            critic.dim(), model.config.d_model);
+        std::process::exit(2);
+    }
+    eprintln!("[critic] loaded {:?} (dim={}, n_trained={}, mse={:.4})",
+        path, critic.dim(), critic.n_trained(), critic.train_mse());
+    model.replace_energy_critic(critic);
+    true
 }
 
 /// Softmax-probability of a single class from raw logits.
@@ -609,13 +670,16 @@ fn cmd_train_tokenizer(corpus_path: &PathBuf, output: &PathBuf, n_merges: usize)
 fn cmd_ingest(
     model_path: &PathBuf, input_path: &PathBuf, memory_dir: &PathBuf,
     tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
-    max_tokens: usize,
+    critic_path: &Option<PathBuf>, max_tokens: usize,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[ingest] Loading model from {:?}", model_path);
     let mut model = io::loader::load_model(model_path).expect("failed to load");
     assert_vocab_compatible(&tokenizer, &model.config);
 
+    if let Some(p) = critic_path.as_ref() {
+        apply_critic_file(&mut model, p);
+    }
     if let Some(dir) = modules_dir.as_ref() {
         load_modules_into(&mut model, dir);
     }
@@ -702,13 +766,16 @@ fn cmd_ingest(
 fn cmd_eval(
     model_path: &PathBuf, corpus_path: &PathBuf,
     tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
-    max_tokens: usize,
+    critic_path: &Option<PathBuf>, max_tokens: usize,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[eval] Loading model from {:?}", model_path);
     let mut model = io::loader::load_model(model_path).expect("failed to load");
     assert_vocab_compatible(&tokenizer, &model.config);
 
+    if let Some(p) = critic_path.as_ref() {
+        apply_critic_file(&mut model, p);
+    }
     let n_modules = if let Some(dir) = modules_dir.as_ref() {
         load_modules_into(&mut model, dir)
     } else { 0 };
@@ -744,6 +811,86 @@ fn cmd_eval(
     // Machine-readable last line for scripting.
     println!("{{\"n\":{},\"mean_nll\":{:.8},\"perplexity\":{:.6},\"n_modules\":{}}}",
         n_predicted, mean_nll, perplexity, n_modules);
+}
+
+fn cmd_calibrate(
+    model_path: &PathBuf, corpus_path: &PathBuf,
+    tokenizer_path: &Option<PathBuf>, output: &PathBuf,
+    lr: f32, epochs: usize, max_tokens: usize,
+) {
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[calibrate] Loading model from {:?}", model_path);
+    let mut model = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model.config);
+
+    eprintln!("[calibrate] Tokenizing {:?}", corpus_path);
+    let text = std::fs::read_to_string(corpus_path).expect("failed to read corpus");
+    let tokens = tokenizer.encode(&text);
+    let per_epoch = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    eprintln!("[calibrate] {} tokens × {} epochs, lr={}", per_epoch, epochs, lr);
+
+    let d_model = model.config.d_model;
+    let mut hidden_scratch: Vec<f32> = vec![0.0; d_model];
+    let start = Instant::now();
+
+    for epoch in 0..epochs {
+        model.reset_state();
+        let mut total_nll = 0.0f64;
+        let mut total_sse = 0.0f64;
+        let mut n = 0usize;
+
+        for i in 0..per_epoch.saturating_sub(1) {
+            let logits = model.decode_step(tokens[i]);
+            let p = prob_of_token(logits.data(), tokens[i + 1]);
+            let nll = -(p.max(1e-12) as f64).ln();
+            total_nll += nll;
+
+            // Snapshot current hidden before training to avoid aliasing.
+            hidden_scratch.copy_from_slice(model.last_hidden().data());
+            let sse = model.energy_critic_mut()
+                .train_step(&hidden_scratch, nll as f32, lr);
+            total_sse += sse as f64;
+            n += 1;
+        }
+
+        let mean_nll = if n > 0 { total_nll / n as f64 } else { 0.0 };
+        let mean_sse = if n > 0 { total_sse / n as f64 } else { 0.0 };
+        eprintln!("[calibrate] epoch {}: n={}, mean_nll={:.4}, mean_critic_se={:.4}, cumulative_mse={:.4}",
+            epoch + 1, n, mean_nll, mean_sse, model.energy_critic().train_mse());
+    }
+
+    let bytes = model.energy_critic().to_bytes();
+    std::fs::write(output, &bytes).expect("failed to write critic file");
+    let elapsed = start.elapsed();
+    eprintln!("[calibrate] wrote {:?} ({} bytes), {:.2}s total, n_trained={}",
+        output, bytes.len(), elapsed.as_secs_f64(), model.energy_critic().n_trained());
+
+    // Diagnostic: correlation between critic output and NLL on a single fresh pass.
+    model.reset_state();
+    let sample_n = per_epoch.min(2000).saturating_sub(1);
+    let mut xs = Vec::with_capacity(sample_n);
+    let mut ys = Vec::with_capacity(sample_n);
+    for i in 0..sample_n {
+        let logits = model.decode_step(tokens[i]);
+        let p = prob_of_token(logits.data(), tokens[i + 1]);
+        let nll = -(p.max(1e-12) as f64).ln();
+        let pred = model.energy_critic().predict(model.last_hidden().data()) as f64;
+        xs.push(pred); ys.push(nll);
+    }
+    if !xs.is_empty() {
+        let n = xs.len() as f64;
+        let mx: f64 = xs.iter().sum::<f64>() / n;
+        let my: f64 = ys.iter().sum::<f64>() / n;
+        let mut num = 0.0f64; let mut sx = 0.0f64; let mut sy = 0.0f64;
+        for i in 0..xs.len() {
+            let dx = xs[i] - mx; let dy = ys[i] - my;
+            num += dx * dy; sx += dx * dx; sy += dy * dy;
+        }
+        let r = if sx > 0.0 && sy > 0.0 { num / (sx.sqrt() * sy.sqrt()) } else { 0.0 };
+        eprintln!("[calibrate] diagnostic (first {} tokens): pearson(critic, nll) = {:.4}", xs.len(), r);
+        println!("{{\"n_trained\":{},\"mse\":{:.6},\"pearson\":{:.6}}}",
+            model.energy_critic().n_trained(), model.energy_critic().train_mse(), r);
+    }
 }
 
 fn cmd_crystal(memory_dir: &PathBuf, modules_dir: &PathBuf, d_model: usize, n_clusters: usize) {

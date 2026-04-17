@@ -192,4 +192,21 @@ impl CoreModel {
     pub fn embed_table(&self) -> &[f32] {
         self.embedding.table()
     }
+
+    /// Replace the energy critic with a (typically trained) one of the same d_model.
+    pub fn replace_energy_critic(&mut self, critic: EnergyCritic) {
+        assert_eq!(critic.dim(), self.config.d_model,
+            "critic d_model {} != core d_model {}", critic.dim(), self.config.d_model);
+        self.energy_critic = critic;
+    }
+
+    /// Mutable access to the energy critic (for online training).
+    pub fn energy_critic_mut(&mut self) -> &mut EnergyCritic {
+        &mut self.energy_critic
+    }
+
+    /// Immutable access.
+    pub fn energy_critic(&self) -> &EnergyCritic {
+        &self.energy_critic
+    }
 }
