@@ -3,9 +3,11 @@
 //! Embed → [Block × L] → FinalNorm → LM Head.
 //! O(1) decode memory. Zero heap allocations on the hot path.
 
+use crate::crystal::detector::NoveltyDetector;
 use crate::crystal::module::CrystalModule;
 use crate::model::block::Block;
 use crate::model::config::KernelConfig;
+use crate::nn::confidence::{AdaptiveConfig, ConfidenceHead};
 use crate::nn::embed::Embedding;
 use crate::nn::energy::EnergyCritic;
 use crate::nn::rmsnorm::RMSNorm;
@@ -31,6 +33,17 @@ pub struct CoreModel {
     pub crystal_activation_threshold: f32,
     /// Scratch buffer for module outputs (d_model).
     buf_module_out: Tensor,
+    /// Phase B+C: Head C — predicts per-step NLL. When `adaptive_config.enabled`
+    /// is true and this head fires above its detector threshold, the block
+    /// stack iterates extra times before unembedding.
+    confidence_head: Option<ConfidenceHead>,
+    /// Per-head adaptive threshold for Head C.
+    confidence_detector: NoveltyDetector,
+    /// Adaptive-decode configuration.
+    pub adaptive_config: AdaptiveConfig,
+    /// Counter: number of extra SSM iterations taken since last reset. Read
+    /// by callers who want to feed it into the metrics window.
+    extra_steps_counter: u64,
 }
 
 impl CoreModel {
@@ -60,6 +73,10 @@ impl CoreModel {
             crystal_modules: Vec::new(),
             crystal_activation_threshold: 0.3,
             buf_module_out,
+            confidence_head: None,
+            confidence_detector: NoveltyDetector::new(),
+            adaptive_config: AdaptiveConfig::default(),
+            extra_steps_counter: 0,
         }
     }
 
@@ -82,7 +99,39 @@ impl CoreModel {
             crystal_modules: Vec::new(),
             crystal_activation_threshold: 0.3,
             buf_module_out,
+            confidence_head: None,
+            confidence_detector: NoveltyDetector::new(),
+            adaptive_config: AdaptiveConfig::default(),
+            extra_steps_counter: 0,
         }
+    }
+
+    /// Install a pre-trained Head C. Its `dim()` must equal `config.d_model`.
+    pub fn set_confidence_head(&mut self, head: ConfidenceHead) {
+        assert_eq!(
+            head.dim(), self.config.d_model,
+            "confidence head dim {} != d_model {}",
+            head.dim(), self.config.d_model,
+        );
+        self.confidence_head = Some(head);
+    }
+
+    pub fn confidence_head(&self) -> Option<&ConfidenceHead> {
+        self.confidence_head.as_ref()
+    }
+
+    pub fn confidence_head_mut(&mut self) -> Option<&mut ConfidenceHead> {
+        self.confidence_head.as_mut()
+    }
+
+    pub fn has_confidence_head(&self) -> bool {
+        self.confidence_head.is_some()
+    }
+
+    /// Number of extra adaptive iterations taken since `reset_extra_steps()`.
+    /// Callers drain this into the metrics window per token.
+    pub fn take_extra_steps(&mut self) -> u64 {
+        std::mem::take(&mut self.extra_steps_counter)
     }
 
     /// Install a crystallized knowledge module.
@@ -131,6 +180,15 @@ impl CoreModel {
     }
 
     /// Process a single token. Returns logits.
+    ///
+    /// Phase B+C: when `adaptive_config.enabled` is true and a confidence
+    /// head is installed, Head C is evaluated on the post-block hidden
+    /// state. If its z-score against the detector's running baseline
+    /// exceeds `z_threshold`, the block stack is iterated up to
+    /// `max_extra_steps` additional times on the current buffer before
+    /// unembedding. Each extra iteration increments
+    /// `extra_steps_counter`, which callers drain via `take_extra_steps()`
+    /// into the metrics window.
     pub fn decode_step(&mut self, token: u32) -> Tensor {
         self.embedding.embed(token, &mut self.buf_x);
 
@@ -140,6 +198,28 @@ impl CoreModel {
 
         self.final_norm.forward(&mut self.buf_x, &self.dispatch);
         self.apply_crystal_modules();
+
+        // Adaptive pondering: iterate the block stack extra times when
+        // Head C signals uncertainty. Each extra pass refines the SSM
+        // state on the *current* hidden without re-embedding.
+        if self.adaptive_config.enabled {
+            if let Some(head) = self.confidence_head.as_ref() {
+                let predicted_nll = head.predict(self.buf_x.data());
+                let novelty = self.confidence_detector.evaluate(predicted_nll);
+                if novelty.is_novel && novelty.z >= self.adaptive_config.z_threshold {
+                    let budget = self.adaptive_config.max_extra_steps as usize;
+                    for _ in 0..budget {
+                        for block in self.blocks.iter_mut() {
+                            let _ = block.forward(&mut self.buf_x, &self.dispatch);
+                        }
+                        self.final_norm.forward(&mut self.buf_x, &self.dispatch);
+                        self.apply_crystal_modules();
+                        self.extra_steps_counter += 1;
+                    }
+                }
+            }
+        }
+
         self.last_hidden.copy_from(&self.buf_x);
         self.embedding.unembed(&self.buf_x, &mut self.buf_logits);
 

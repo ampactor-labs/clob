@@ -12,6 +12,7 @@ use clob::model::generate::{self, SamplingConfig};
 use clob::model::stack::CoreModel;
 use clob::nn::energy::EnergyCritic;
 use clob::metrics::EnergyMeter;
+use clob::nn::confidence::{AdaptiveConfig, ConfidenceHead};
 use clob::token::bpe::BpeTokenizer;
 use rand::SeedableRng;
 use rand::Rng;
@@ -134,6 +135,20 @@ enum Commands {
         /// Tokens per metrics window (snapshot is emitted every N tokens).
         #[arg(long, default_value_t = 500)]
         metrics_window: u64,
+        /// Load a trained confidence head (Head C) side-file before ingesting.
+        #[arg(long)]
+        confidence_head: Option<PathBuf>,
+        /// Enable adaptive test-time compute: when Head C signals low
+        /// confidence, the block stack iterates extra times before
+        /// unembedding. Requires --confidence-head to be set.
+        #[arg(long)]
+        adaptive_compute: bool,
+        /// Maximum extra SSM iterations per token when adaptive compute fires.
+        #[arg(long, default_value_t = 4)]
+        adaptive_max_extra: u8,
+        /// Z-score threshold on Head C's detector for firing adaptive compute.
+        #[arg(long, default_value_t = 1.0)]
+        adaptive_z: f32,
     },
     /// Tail a metrics jsonl file and print the dashboard (J/nat, tokens/sec,
     /// CE, deltas vs. the first window).
@@ -161,6 +176,26 @@ enum Commands {
         #[arg(long)]
         critic: Option<PathBuf>,
         /// Cap on tokens to evaluate (0 = unlimited).
+        #[arg(long, default_value_t = 0)]
+        max_tokens: usize,
+    },
+    /// Train a confidence head (Head C) online: same shape as Calibrate, but
+    /// targets a separate linear probe used by adaptive decode. Keeps heads
+    /// N and C independently parameterized to avoid gradient cannibalization.
+    CalibrateConfidence {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Output head side-file.
+        #[arg(long, default_value = "confidence.bin")]
+        output: PathBuf,
+        #[arg(long, default_value_t = 1e-4)]
+        lr: f32,
+        #[arg(long, default_value_t = 1)]
+        epochs: usize,
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
     },
@@ -270,11 +305,26 @@ fn main() {
         Commands::TrainTokenizer { corpus, output, n_merges } => {
             cmd_train_tokenizer(&corpus, &output, n_merges);
         }
-        Commands::Ingest { model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens, metrics_out, metrics_window } => {
-            cmd_ingest(&model, &input, &memory_dir, &tokenizer, &modules_dir, &critic, max_tokens, &metrics_out, metrics_window);
+        Commands::Ingest {
+            model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens,
+            metrics_out, metrics_window, confidence_head, adaptive_compute,
+            adaptive_max_extra, adaptive_z,
+        } => {
+            let adaptive = AdaptiveConfig {
+                enabled: adaptive_compute,
+                max_extra_steps: adaptive_max_extra,
+                z_threshold: adaptive_z,
+            };
+            cmd_ingest(
+                &model, &input, &memory_dir, &tokenizer, &modules_dir, &critic,
+                max_tokens, &metrics_out, metrics_window, &confidence_head, adaptive,
+            );
         }
         Commands::Metrics { path, tail } => {
             cmd_metrics(&path, tail);
+        }
+        Commands::CalibrateConfidence { model, corpus, tokenizer, output, lr, epochs, max_tokens } => {
+            cmd_calibrate_confidence(&model, &corpus, &tokenizer, &output, lr, epochs, max_tokens);
         }
         Commands::Eval { model, corpus, tokenizer, modules_dir, critic, max_tokens } => {
             cmd_eval(&model, &corpus, &tokenizer, &modules_dir, &critic, max_tokens);
@@ -421,6 +471,32 @@ fn apply_critic_file(model: &mut CoreModel, path: &Path) -> bool {
     eprintln!("[critic] loaded {:?} (dim={}, n_trained={}, mse={:.4})",
         path, critic.dim(), critic.n_trained(), critic.train_mse());
     model.replace_energy_critic(critic);
+    true
+}
+
+fn apply_confidence_head_file(model: &mut CoreModel, path: &Path) -> bool {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[conf] {:?}: {}", path, e);
+            return false;
+        }
+    };
+    let head = match ConfidenceHead::from_bytes(&bytes) {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("[conf] parse {:?}: {}", path, e);
+            return false;
+        }
+    };
+    if head.dim() != model.config.d_model {
+        eprintln!("[conf] dim {} != model d_model {}; refusing to install",
+            head.dim(), model.config.d_model);
+        std::process::exit(2);
+    }
+    eprintln!("[conf] loaded {:?} (dim={}, n_trained={}, mse={:.4})",
+        path, head.dim(), head.n_trained(), head.train_mse());
+    model.set_confidence_head(head);
     true
 }
 
@@ -692,6 +768,7 @@ fn cmd_ingest(
     tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
     critic_path: &Option<PathBuf>, max_tokens: usize,
     metrics_out: &Option<PathBuf>, metrics_window: u64,
+    confidence_head_path: &Option<PathBuf>, adaptive: AdaptiveConfig,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[ingest] Loading model from {:?}", model_path);
@@ -700,6 +777,13 @@ fn cmd_ingest(
 
     if let Some(p) = critic_path.as_ref() {
         apply_critic_file(&mut model, p);
+    }
+    if let Some(p) = confidence_head_path.as_ref() {
+        apply_confidence_head_file(&mut model, p);
+    }
+    model.adaptive_config = adaptive;
+    if adaptive.enabled && !model.has_confidence_head() {
+        eprintln!("[ingest] WARN: --adaptive-compute requested but no --confidence-head loaded; adaptive will not fire.");
     }
     if let Some(dir) = modules_dir.as_ref() {
         load_modules_into(&mut model, dir);
@@ -783,11 +867,15 @@ fn cmd_ingest(
         }
 
         // Metrics: record this step and flush a window if we've crossed the boundary.
+        let extra_this_step = model.take_extra_steps();
         if let Some(sink) = metrics.as_mut() {
             let (joules, now) = meter.joules_since(step_start);
             let nanos = now.duration_since(step_start).as_nanos();
             last_tick = now;
             sink.record(nll, joules, nanos, novelty.is_novel);
+            for _ in 0..extra_this_step {
+                sink.record_extra_step();
+            }
             sink.maybe_flush();
         } else {
             last_tick = Instant::now();
@@ -836,6 +924,10 @@ impl MetricsSink {
         if novel {
             self.window.record_novel();
         }
+    }
+
+    fn record_extra_step(&mut self) {
+        self.window.record_extra_step();
     }
 
     fn maybe_flush(&mut self) {
@@ -1030,6 +1122,86 @@ fn cmd_calibrate(
         eprintln!("[calibrate] diagnostic (first {} tokens): pearson(critic, nll) = {:.4}", xs.len(), r);
         println!("{{\"n_trained\":{},\"mse\":{:.6},\"pearson\":{:.6}}}",
             model.energy_critic().n_trained(), model.energy_critic().train_mse(), r);
+    }
+}
+
+fn cmd_calibrate_confidence(
+    model_path: &PathBuf, corpus_path: &PathBuf,
+    tokenizer_path: &Option<PathBuf>, output: &PathBuf,
+    lr: f32, epochs: usize, max_tokens: usize,
+) {
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[conf-cal] Loading model from {:?}", model_path);
+    let mut model = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model.config);
+
+    let d_model = model.config.d_model;
+    let mut head = ConfidenceHead::random(d_model, &mut rand::rngs::StdRng::seed_from_u64(42));
+
+    eprintln!("[conf-cal] Tokenizing {:?}", corpus_path);
+    let text = std::fs::read_to_string(corpus_path).expect("failed to read corpus");
+    let tokens = tokenizer.encode(&text);
+    let per_epoch = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    eprintln!("[conf-cal] {} tokens × {} epochs, lr={}", per_epoch, epochs, lr);
+
+    let mut hidden_scratch: Vec<f32> = vec![0.0; d_model];
+    let start = Instant::now();
+
+    for epoch in 0..epochs {
+        model.reset_state();
+        let mut total_nll = 0.0f64;
+        let mut total_sse = 0.0f64;
+        let mut n = 0usize;
+
+        for i in 0..per_epoch.saturating_sub(1) {
+            let logits = model.decode_step(tokens[i]);
+            let p = prob_of_token(logits.data(), tokens[i + 1]);
+            let nll = -(p.max(1e-12) as f64).ln();
+            total_nll += nll;
+
+            hidden_scratch.copy_from_slice(model.last_hidden().data());
+            let sse = head.train_step(&hidden_scratch, nll as f32, lr);
+            total_sse += sse as f64;
+            n += 1;
+        }
+
+        let mean_nll = if n > 0 { total_nll / n as f64 } else { 0.0 };
+        let mean_sse = if n > 0 { total_sse / n as f64 } else { 0.0 };
+        eprintln!("[conf-cal] epoch {}: n={}, mean_nll={:.4}, mean_head_se={:.4}, cumulative_mse={:.4}",
+            epoch + 1, n, mean_nll, mean_sse, head.train_mse());
+    }
+
+    let bytes = head.to_bytes();
+    std::fs::write(output, &bytes).expect("failed to write confidence head file");
+    let elapsed = start.elapsed();
+    eprintln!("[conf-cal] wrote {:?} ({} bytes), {:.2}s total, n_trained={}",
+        output, bytes.len(), elapsed.as_secs_f64(), head.n_trained());
+
+    // Diagnostic: correlation between head output and NLL on a fresh pass.
+    model.reset_state();
+    let sample_n = per_epoch.min(2000).saturating_sub(1);
+    let mut xs = Vec::with_capacity(sample_n);
+    let mut ys = Vec::with_capacity(sample_n);
+    for i in 0..sample_n {
+        let logits = model.decode_step(tokens[i]);
+        let p = prob_of_token(logits.data(), tokens[i + 1]);
+        let nll = -(p.max(1e-12) as f64).ln();
+        let pred = head.predict_raw(model.last_hidden().data()) as f64;
+        xs.push(pred); ys.push(nll);
+    }
+    if !xs.is_empty() {
+        let n = xs.len() as f64;
+        let mx: f64 = xs.iter().sum::<f64>() / n;
+        let my: f64 = ys.iter().sum::<f64>() / n;
+        let mut num = 0.0f64; let mut sx = 0.0f64; let mut sy = 0.0f64;
+        for i in 0..xs.len() {
+            let dx = xs[i] - mx; let dy = ys[i] - my;
+            num += dx * dy; sx += dx * dx; sy += dy * dy;
+        }
+        let r = if sx > 0.0 && sy > 0.0 { num / (sx.sqrt() * sy.sqrt()) } else { 0.0 };
+        eprintln!("[conf-cal] diagnostic (first {} tokens): pearson(head, nll) = {:.4}", xs.len(), r);
+        println!("{{\"n_trained\":{},\"mse\":{:.6},\"pearson\":{:.6}}}",
+            head.n_trained(), head.train_mse(), r);
     }
 }
 

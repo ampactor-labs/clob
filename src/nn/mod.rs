@@ -7,3 +7,4 @@ pub mod ssm;
 pub mod mlgru;
 pub mod glu;
 pub mod energy;
+pub mod confidence;
