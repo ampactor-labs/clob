@@ -11,6 +11,7 @@ use clob::model::config::KernelConfig;
 use clob::model::generate::{self, SamplingConfig};
 use clob::model::stack::CoreModel;
 use clob::nn::energy::EnergyCritic;
+use clob::metrics::EnergyMeter;
 use clob::token::bpe::BpeTokenizer;
 use rand::SeedableRng;
 use rand::Rng;
@@ -127,6 +128,22 @@ enum Commands {
         /// Cap on tokens to ingest (0 = unlimited).
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
+        /// Write per-window metrics (J/nat, tokens/sec) to a jsonl file.
+        #[arg(long)]
+        metrics_out: Option<PathBuf>,
+        /// Tokens per metrics window (snapshot is emitted every N tokens).
+        #[arg(long, default_value_t = 500)]
+        metrics_window: u64,
+    },
+    /// Tail a metrics jsonl file and print the dashboard (J/nat, tokens/sec,
+    /// CE, deltas vs. the first window).
+    Metrics {
+        /// Path to the jsonl file written by `ingest --metrics-out`.
+        #[arg(long)]
+        path: PathBuf,
+        /// Show the most recent N windows (0 = all).
+        #[arg(long, default_value_t = 20)]
+        tail: usize,
     },
     /// Evaluate: compute per-token cross-entropy / perplexity on a corpus.
     /// The falsifiable test: does adding crystal modules reduce NLL?
@@ -253,8 +270,11 @@ fn main() {
         Commands::TrainTokenizer { corpus, output, n_merges } => {
             cmd_train_tokenizer(&corpus, &output, n_merges);
         }
-        Commands::Ingest { model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens } => {
-            cmd_ingest(&model, &input, &memory_dir, &tokenizer, &modules_dir, &critic, max_tokens);
+        Commands::Ingest { model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens, metrics_out, metrics_window } => {
+            cmd_ingest(&model, &input, &memory_dir, &tokenizer, &modules_dir, &critic, max_tokens, &metrics_out, metrics_window);
+        }
+        Commands::Metrics { path, tail } => {
+            cmd_metrics(&path, tail);
         }
         Commands::Eval { model, corpus, tokenizer, modules_dir, critic, max_tokens } => {
             cmd_eval(&model, &corpus, &tokenizer, &modules_dir, &critic, max_tokens);
@@ -671,6 +691,7 @@ fn cmd_ingest(
     model_path: &PathBuf, input_path: &PathBuf, memory_dir: &PathBuf,
     tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
     critic_path: &Option<PathBuf>, max_tokens: usize,
+    metrics_out: &Option<PathBuf>, metrics_window: u64,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[ingest] Loading model from {:?}", model_path);
@@ -687,6 +708,22 @@ fn cmd_ingest(
     let memory = EpisodicMemory::open(memory_dir, 100_000).expect("failed to open memory");
     let mut novelty_detector = NoveltyDetector::new();
 
+    // Per-window metrics sink. Enabled only when --metrics-out is provided.
+    let mut metrics = match metrics_out {
+        Some(path) => match clob::metrics::JsonlWriter::create(path) {
+            Ok(writer) => {
+                eprintln!("[metrics] Writing windows of {} tokens to {:?}", metrics_window, path);
+                Some(MetricsSink::new(writer, metrics_window))
+            }
+            Err(e) => {
+                eprintln!("[metrics] failed to open {:?}: {} — continuing without metrics", path, e);
+                None
+            }
+        },
+        None => None,
+    };
+    let mut meter = clob::metrics::TdpProxyMeter::t490();
+
     eprintln!("[ingest] Tokenizing {:?}", input_path);
     let text = std::fs::read_to_string(input_path).expect("failed to read corpus");
     let tokens = tokenizer.encode(&text);
@@ -701,11 +738,14 @@ fn cmd_ingest(
 
     // Stream through decode_step one token at a time. Predict token[i+1] from state after token[i].
     model.reset_state();
+    let mut last_tick = Instant::now();
     for i in 0..limit.saturating_sub(1) {
+        let step_start = last_tick;
         let logits = model.decode_step(tokens[i]);
         let actual = tokens[i + 1];
         let p_actual = prob_of_token(logits.data(), actual);
-        total_nll += -((p_actual.max(1e-12)) as f64).ln();
+        let nll = -((p_actual.max(1e-12)) as f64).ln();
+        total_nll += nll;
         n_predicted += 1;
 
         let (energy, _) = model.energy_score_and_detect();
@@ -741,6 +781,20 @@ fn cmd_ingest(
         if model.n_crystal_modules() > 0 {
             module_activations += model.n_crystal_modules();
         }
+
+        // Metrics: record this step and flush a window if we've crossed the boundary.
+        if let Some(sink) = metrics.as_mut() {
+            let (joules, now) = meter.joules_since(step_start);
+            let nanos = now.duration_since(step_start).as_nanos();
+            last_tick = now;
+            sink.record(nll, joules, nanos, novelty.is_novel);
+            sink.maybe_flush();
+        } else {
+            last_tick = Instant::now();
+        }
+    }
+    if let Some(sink) = metrics.as_mut() {
+        sink.flush_final();
     }
 
     let elapsed = start.elapsed();
@@ -761,6 +815,92 @@ fn cmd_ingest(
         eprintln!("[ingest] Crystal modules active: {} (total potential activations: {})",
             model.n_crystal_modules(), module_activations);
     }
+}
+
+/// Owns the window + jsonl writer and handles boundary flushing. Lives in
+/// cmd_ingest today; future phases will share this helper across subcommands.
+struct MetricsSink {
+    writer: clob::metrics::JsonlWriter,
+    window: clob::metrics::MetricsWindow,
+    window_size: u64,
+    next_idx: u64,
+}
+
+impl MetricsSink {
+    fn new(writer: clob::metrics::JsonlWriter, window_size: u64) -> Self {
+        Self { writer, window: clob::metrics::MetricsWindow::new(0), window_size, next_idx: 1 }
+    }
+
+    fn record(&mut self, nll: f64, joules: f64, nanos: u128, novel: bool) {
+        self.window.record_step(nll, joules, nanos);
+        if novel {
+            self.window.record_novel();
+        }
+    }
+
+    fn maybe_flush(&mut self) {
+        if self.window.tokens() >= self.window_size {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        let snap = self.window.snapshot_and_reset();
+        self.window = clob::metrics::MetricsWindow::new(self.next_idx);
+        self.next_idx += 1;
+        if let Err(e) = self.writer.append(&snap) {
+            eprintln!("[metrics] write error: {}", e);
+        }
+    }
+
+    fn flush_final(&mut self) {
+        if self.window.tokens() > 0 {
+            self.flush();
+        }
+    }
+}
+
+fn cmd_metrics(path: &PathBuf, tail: usize) {
+    let n = if tail == 0 { usize::MAX } else { tail };
+    let snaps = match clob::metrics::read_tail(path, n) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[metrics] cannot read {:?}: {}", path, e);
+            std::process::exit(2);
+        }
+    };
+    if snaps.is_empty() {
+        eprintln!("[metrics] no windows in {:?}", path);
+        return;
+    }
+    let baseline_jpn = snaps[0].j_per_nat;
+    let baseline_ce = snaps[0].mean_nll;
+    println!(
+        "{:>4} {:>8} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10} {:>8}",
+        "idx", "tokens", "sec", "J", "J/nat", "ΔJ/nat%", "mean_nll", "Δmean_nll", "tok/s",
+    );
+    for s in &snaps {
+        let d_jpn = if baseline_jpn > 0.0 {
+            (s.j_per_nat - baseline_jpn) / baseline_jpn * 100.0
+        } else {
+            0.0
+        };
+        let d_ce = s.mean_nll - baseline_ce;
+        println!(
+            "{:>4} {:>8} {:>8.2} {:>10.3} {:>10.4} {:>+9.2}% {:>10.4} {:>+10.4} {:>8.1}",
+            s.window_idx, s.tokens, s.seconds,
+            s.joules, s.j_per_nat, d_jpn,
+            s.mean_nll, d_ce,
+            s.tokens_per_sec,
+        );
+    }
+    // Summary line
+    let last = snaps.last().unwrap();
+    println!();
+    println!(
+        "baseline J/nat = {:.4} | latest J/nat = {:.4} | ΔCE vs baseline = {:+.4}",
+        baseline_jpn, last.j_per_nat, last.mean_nll - baseline_ce,
+    );
 }
 
 fn cmd_eval(

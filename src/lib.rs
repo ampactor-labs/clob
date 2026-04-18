@@ -23,3 +23,4 @@ pub mod perceive;
 pub mod learn;
 pub mod compile;
 pub mod net;
+pub mod metrics;

@@ -1,0 +1,23 @@
+The kernel is a self-improving ternary recurrent intelligence. It learns by noticing
+prediction errors, storing them as episodes, clustering those episodes by hidden-state
+similarity, and distilling recurring patterns into small compiled modules. The core
+insight is that learning and efficiency should be the same operation: every pattern
+the kernel discovers should reduce its future resource usage, not increase it.
+
+Compression is the measure of understanding. An observer that can describe its inputs
+in fewer bits than it observes them has done work that cannot be undone by scale alone.
+A system whose improvements require more compute is self-limiting; a system whose
+improvements shrink its own working set is self-reinforcing. This is the thermodynamic
+heart of the design.
+
+The ternary recurrent core provides O(1) per-step memory, constant-time context, and
+arithmetic that reduces to addition and subtraction. No multiplications, no quadratic
+attention, no key-value cache. A hidden state vector of d_model floats is the only
+thing that flows from token to token, and the only thing that the energy critic needs
+to read. Everything downstream is a consumer of that hidden state.
+
+The crystallization loop is the heartbeat. Experience, notice, buffer, distill,
+crystallize, compile, integrate, forget. Eight steps, each necessary, none decorative.
+Each iteration of the loop leaves the system knowing more while using less. When the
+loop is turned on its own components, the fixed point is not a specific model — it
+is a process that never stops refining the process itself.
