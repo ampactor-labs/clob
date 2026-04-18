@@ -150,6 +150,42 @@ enum Commands {
         #[arg(long, default_value_t = 1.0)]
         adaptive_z: f32,
     },
+    /// Active ingest: rotate probe batches among multiple sources, score each
+    /// by acquisition `max(N − C, 0) / joules_per_token`, spend the next
+    /// commit batch on the winner. Canonical Phase D verification: a noise
+    /// source should receive < 20% of total tokens against a real corpus.
+    ActiveIngest {
+        #[arg(long)]
+        model: PathBuf,
+        /// One or more files to use as sources. Each becomes a `VecSource`
+        /// over its tokenized content.
+        #[arg(long, value_delimiter = ',')]
+        sources: Vec<PathBuf>,
+        /// Also include a uniform-noise source as a pathological control.
+        #[arg(long)]
+        include_noise: bool,
+        #[arg(long, default_value = "episodes")]
+        memory_dir: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        #[arg(long)]
+        critic: Option<PathBuf>,
+        #[arg(long)]
+        confidence_head: Option<PathBuf>,
+        /// Tokens per probe round (each source gets this many tokens to score).
+        #[arg(long, default_value_t = 100)]
+        probe_tokens: usize,
+        /// Tokens to commit from the winning source before the next probe.
+        #[arg(long, default_value_t = 400)]
+        commit_tokens: usize,
+        /// Total token budget across all commit rounds.
+        #[arg(long, default_value_t = 3000)]
+        max_tokens: usize,
+        #[arg(long)]
+        metrics_out: Option<PathBuf>,
+        #[arg(long, default_value_t = 500)]
+        metrics_window: u64,
+    },
     /// Tail a metrics jsonl file and print the dashboard (J/nat, tokens/sec,
     /// CE, deltas vs. the first window).
     Metrics {
@@ -318,6 +354,17 @@ fn main() {
             cmd_ingest(
                 &model, &input, &memory_dir, &tokenizer, &modules_dir, &critic,
                 max_tokens, &metrics_out, metrics_window, &confidence_head, adaptive,
+            );
+        }
+        Commands::ActiveIngest {
+            model, sources, include_noise, memory_dir, tokenizer, critic,
+            confidence_head, probe_tokens, commit_tokens, max_tokens,
+            metrics_out, metrics_window,
+        } => {
+            cmd_active_ingest(
+                &model, &sources, include_noise, &memory_dir, &tokenizer,
+                &critic, &confidence_head, probe_tokens, commit_tokens,
+                max_tokens, &metrics_out, metrics_window,
             );
         }
         Commands::Metrics { path, tail } => {
@@ -949,6 +996,236 @@ impl MetricsSink {
         if self.window.tokens() > 0 {
             self.flush();
         }
+    }
+}
+
+fn cmd_active_ingest(
+    model_path: &PathBuf, source_paths: &[PathBuf], include_noise: bool,
+    memory_dir: &PathBuf, tokenizer_path: &Option<PathBuf>,
+    critic_path: &Option<PathBuf>, confidence_head_path: &Option<PathBuf>,
+    probe_tokens: usize, commit_tokens: usize, max_tokens: usize,
+    metrics_out: &Option<PathBuf>, metrics_window: u64,
+) {
+    use clob::perceive::active::{score_probe, DataSource, NoiseSource, VecSource};
+
+    if source_paths.is_empty() && !include_noise {
+        eprintln!("[active] error: supply at least one --sources path or --include-noise");
+        std::process::exit(2);
+    }
+
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[active] Loading model from {:?}", model_path);
+    let mut model = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model.config);
+
+    if let Some(p) = critic_path.as_ref() {
+        apply_critic_file(&mut model, p);
+    }
+    if let Some(p) = confidence_head_path.as_ref() {
+        apply_confidence_head_file(&mut model, p);
+    }
+
+    let memory = EpisodicMemory::open(memory_dir, 100_000).expect("failed to open memory");
+
+    // Build sources from file paths + optional noise.
+    let mut sources: Vec<Box<dyn DataSource>> = Vec::new();
+    for path in source_paths {
+        let text = match std::fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[active] skipping {:?}: {}", path, e);
+                continue;
+            }
+        };
+        let tokens = tokenizer.encode(&text);
+        let id = format!("file:{}", path.display());
+        eprintln!("[active] source {} → {} tokens", id, tokens.len());
+        sources.push(Box::new(VecSource::new(id, tokens)));
+    }
+    if include_noise {
+        eprintln!("[active] source noise:uniform (vocab={})", model.config.vocab_size);
+        sources.push(Box::new(NoiseSource::new(model.config.vocab_size as u32)));
+    }
+    if sources.is_empty() {
+        eprintln!("[active] no usable sources, aborting");
+        std::process::exit(2);
+    }
+
+    // Metrics sink is shared across probe and commit phases; all tokens that
+    // actually run through the model are billed to the window.
+    let mut metrics = match metrics_out {
+        Some(path) => match clob::metrics::JsonlWriter::create(path) {
+            Ok(writer) => {
+                eprintln!("[metrics] Writing windows of {} tokens to {:?}", metrics_window, path);
+                Some(MetricsSink::new(writer, metrics_window))
+            }
+            Err(e) => {
+                eprintln!("[metrics] failed to open {:?}: {} — continuing without metrics", path, e);
+                None
+            }
+        },
+        None => None,
+    };
+    let mut meter = clob::metrics::TdpProxyMeter::t490();
+
+    // Per-source time accounting for the verification histogram.
+    let mut commit_tokens_by_source: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+
+    model.reset_state();
+    let mut total_committed = 0usize;
+    let mut round = 0u64;
+
+    while total_committed < max_tokens && !sources.is_empty() {
+        // ── Probe phase: run each source's next probe batch, score it. ──────
+        let mut probe_results: Vec<(usize, clob::perceive::active::ProbeStats)> = Vec::new();
+        let mut to_remove: Vec<usize> = Vec::new();
+        for (i, src) in sources.iter_mut().enumerate() {
+            let tokens = src.next_batch(probe_tokens);
+            if tokens.is_empty() {
+                to_remove.push(i);
+                continue;
+            }
+            let probe_start = Instant::now();
+            let mut hidden_states: Vec<Vec<f32>> = Vec::with_capacity(tokens.len().saturating_sub(1));
+            let mut actual_nlls: Vec<f32> = Vec::with_capacity(tokens.len().saturating_sub(1));
+            for t in 0..tokens.len().saturating_sub(1) {
+                let logits = model.decode_step(tokens[t]);
+                let p = prob_of_token(logits.data(), tokens[t + 1]);
+                let nll = -((p.max(1e-12)) as f64).ln() as f32;
+                hidden_states.push(model.last_hidden().data().to_vec());
+                actual_nlls.push(nll);
+
+                // Probe tokens are billed to the metrics window — joules
+                // spent here count against J/nat just like commit tokens.
+                let extra = model.take_extra_steps();
+                if let Some(sink) = metrics.as_mut() {
+                    let (joules, _) = meter.joules_since(probe_start);
+                    sink.record(nll as f64, joules / tokens.len() as f64, 0, false);
+                    for _ in 0..extra { sink.record_extra_step(); }
+                    sink.maybe_flush();
+                }
+            }
+            let elapsed = probe_start.elapsed().as_secs_f64();
+            let (joules, _) = meter.joules_since(probe_start);
+            let stats = score_probe(
+                &hidden_states, &actual_nlls,
+                model.energy_critic(),
+                model.confidence_head(),
+                elapsed, joules,
+            );
+            probe_results.push((i, stats));
+            total_committed += tokens.len();
+        }
+        // Remove exhausted sources in reverse order to keep indices stable.
+        for &i in to_remove.iter().rev() {
+            sources.remove(i);
+        }
+        if probe_results.is_empty() {
+            break;
+        }
+
+        // ── Scoring + selection ─────────────────────────────────────────────
+        // Primary: acquisition score (descending). Secondary tiebreak:
+        // lower mean_true_nll (ascending) — when N and C are uninformative
+        // (untrained critic/head), still prefer the source where the model
+        // actually achieved lower cross-entropy. This protects Phase D's
+        // verification from becoming a sort-stability test.
+        probe_results.sort_by(|a, b| {
+            b.1.acquisition_score()
+                .partial_cmp(&a.1.acquisition_score())
+                .unwrap()
+                .then(
+                    a.1.mean_true_nll
+                        .partial_cmp(&b.1.mean_true_nll)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+        eprintln!(
+            "[active] round {} probe scores:{}",
+            round,
+            probe_results.iter().map(|(i, s)| {
+                format!(" {}={:.3}", sources.get(*i).map(|s| s.id()).unwrap_or("?"), s.acquisition_score())
+            }).collect::<String>()
+        );
+        let (winner_idx, _) = probe_results[0];
+
+        // ── Commit phase: spend commit_tokens on the winner. ────────────────
+        let winner_tokens = sources[winner_idx].next_batch(commit_tokens);
+        if winner_tokens.is_empty() {
+            // Exhausted mid-round; continue with remaining sources.
+            sources.remove(winner_idx);
+            round += 1;
+            continue;
+        }
+        let winner_id = sources[winner_idx].id().to_string();
+        *commit_tokens_by_source.entry(winner_id.clone()).or_insert(0) += winner_tokens.len();
+
+        let commit_start = Instant::now();
+        for t in 0..winner_tokens.len().saturating_sub(1) {
+            let step_start = Instant::now();
+            let logits = model.decode_step(winner_tokens[t]);
+            let p = prob_of_token(logits.data(), winner_tokens[t + 1]);
+            let nll = -((p.max(1e-12)) as f64).ln();
+
+            // Commit phase stores episodes when novel (reuses ingest logic).
+            let (energy, _) = model.energy_score_and_detect();
+            // Use the critic's internal baseline rule for now; Phase B+C's
+            // detector wrapping was on Head C only.
+            let is_novel = energy > model.energy_baseline() * 1.5;
+            if is_novel {
+                let top_k: Vec<(u32, f32)> = {
+                    let data = logits.data();
+                    let max = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    let sum: f32 = data.iter().map(|l| (l - max).exp()).sum();
+                    let mut indexed: Vec<(u32, f32)> = data.iter().enumerate()
+                        .map(|(i, &l)| (i as u32, (l - max).exp() / sum.max(1e-12)))
+                        .collect();
+                    indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    indexed.truncate(10);
+                    indexed
+                };
+                let ctx_start = t.saturating_sub(31);
+                let context: Vec<u32> = winner_tokens[ctx_start..=t].to_vec();
+                let episode = Episode::new(
+                    now_nanos(), context,
+                    model.last_hidden().data().to_vec(),
+                    energy, top_k, winner_tokens[t + 1],
+                );
+                let _ = memory.store(&episode);
+            }
+
+            let extra = model.take_extra_steps();
+            if let Some(sink) = metrics.as_mut() {
+                let (joules, now) = meter.joules_since(step_start);
+                let nanos = now.duration_since(step_start).as_nanos();
+                sink.record(nll, joules, nanos, is_novel);
+                for _ in 0..extra { sink.record_extra_step(); }
+                sink.maybe_flush();
+            }
+        }
+        total_committed += winner_tokens.len();
+        let commit_elapsed = commit_start.elapsed().as_secs_f64();
+        eprintln!(
+            "[active] round {} commit: {} tokens from {} ({:.1} tok/s)",
+            round, winner_tokens.len(), winner_id,
+            winner_tokens.len() as f64 / commit_elapsed,
+        );
+        round += 1;
+    }
+
+    if let Some(sink) = metrics.as_mut() {
+        sink.flush_final();
+    }
+
+    eprintln!("[active] Done: {} total tokens across {} rounds", total_committed, round);
+    eprintln!("[active] commit histogram:");
+    let mut by_source: Vec<(String, usize)> = commit_tokens_by_source.into_iter().collect();
+    by_source.sort_by(|a, b| b.1.cmp(&a.1));
+    let total_commit: usize = by_source.iter().map(|(_, n)| n).sum();
+    for (id, n) in &by_source {
+        let pct = if total_commit > 0 { *n as f64 / total_commit as f64 * 100.0 } else { 0.0 };
+        eprintln!("  {}: {} tokens ({:.1}%)", id, n, pct);
     }
 }
 

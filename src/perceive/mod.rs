@@ -2,6 +2,8 @@
 //!
 //! Sources: stdin (interactive), file, network (future).
 
+pub mod active;
+
 use crate::token::bpe::BpeTokenizer;
 use std::io::{self, BufRead, Read};
 use std::path::Path;
