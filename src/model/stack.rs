@@ -302,6 +302,47 @@ impl CoreModel {
         &self.last_hidden
     }
 
+    /// Training-mode decode that captures per-MoE-block hidden states and
+    /// router results. For each MoE block, the tuple is
+    /// `(hidden_at_router, RouteResult)`. Non-MoE blocks contribute
+    /// `None`. Caller is responsible for the policy-gradient update.
+    pub fn decode_step_training(
+        &mut self,
+        token: u32,
+        rng: &mut impl rand::Rng,
+        cf_rate: f32,
+    ) -> (Tensor, Vec<Option<(Tensor, crate::model::router::RouteResult)>>) {
+        self.embedding.embed(token, &mut self.buf_x);
+        let mut route_captures = Vec::with_capacity(self.blocks.len());
+        for block in self.blocks.iter_mut() {
+            let cap = block.forward_training(&mut self.buf_x, &self.dispatch, rng, cf_rate);
+            route_captures.push(cap);
+        }
+        self.final_norm.forward(&mut self.buf_x, &self.dispatch);
+        self.apply_crystal_modules();
+        self.last_hidden.copy_from(&self.buf_x);
+        self.embedding.unembed(&self.buf_x, &mut self.buf_logits);
+        let logits = Tensor::from_vec(self.buf_logits.data().to_vec(), &[self.config.vocab_size]);
+        (logits, route_captures)
+    }
+
+    /// Access the router of MoE block `layer_idx`, if any. Returns None when
+    /// the layer is Dense.
+    pub fn router_mut(&mut self, layer_idx: usize) -> Option<&mut crate::model::router::ExpertRouter> {
+        let block = self.blocks.get_mut(layer_idx)?;
+        match block.channel_mixer_mut() {
+            crate::model::block::ChannelMixer::MoE { router, .. } => Some(router),
+            crate::model::block::ChannelMixer::Dense { .. } => None,
+        }
+    }
+
+    /// Indices of MoE layers.
+    pub fn moe_layer_indices(&self) -> Vec<usize> {
+        self.blocks.iter().enumerate()
+            .filter_map(|(i, b)| if b.is_moe() { Some(i) } else { None })
+            .collect()
+    }
+
     /// Reset all recurrent states.
     pub fn reset_state(&mut self) {
         for block in self.blocks.iter_mut() {

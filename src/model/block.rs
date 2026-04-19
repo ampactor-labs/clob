@@ -75,6 +75,62 @@ impl Block {
         }
     }
 
+    /// Forward with optional counterfactual router sampling for training.
+    ///
+    /// Returns the `(hidden_at_router, route_result)` pair for MoE blocks —
+    /// the training loop needs both to compute a policy gradient. For dense
+    /// blocks, returns `None`.
+    pub fn forward_training(
+        &mut self,
+        x: &mut Tensor,
+        dispatch: &KernelDispatch,
+        rng: &mut impl Rng,
+        cf_rate: f32,
+    ) -> Option<(Tensor, RouteResult)> {
+        self.buf_residual.copy_from(x);
+        self.norm1.forward(x, dispatch);
+        self.ssm.forward(x, &mut self.buf_ssm_out, dispatch);
+        x.copy_from(&self.buf_residual);
+        x.add_(&self.buf_ssm_out);
+
+        self.buf_residual.copy_from(x);
+        self.norm2.forward(x, dispatch);
+
+        let out = match &mut self.channel_mixer {
+            ChannelMixer::Dense { mlgru, glu } => {
+                let gru_out = self.buf_gru_out.as_mut().unwrap();
+                mlgru.forward(x, gru_out, dispatch);
+                glu.forward(gru_out, &mut self.buf_mixer_out, dispatch);
+                None
+            }
+            ChannelMixer::MoE { router, experts } => {
+                // Snapshot the hidden that the router saw; the training
+                // loop needs it to compute the outer product for dW.
+                let hidden_at_router = x.clone();
+                let result = router.route_counterfactual(x, rng, cf_rate);
+                self.buf_mixer_out.zero_();
+                let mut expert_out = Tensor::zeros(&[x.len()]);
+                for (&idx, &weight) in result.expert_indices.iter().zip(result.expert_weights.iter()) {
+                    experts[idx].forward(x, &mut expert_out, dispatch);
+                    for (o, e) in self.buf_mixer_out.data_mut().iter_mut().zip(expert_out.data().iter()) {
+                        *o += weight * e;
+                    }
+                }
+                Some((hidden_at_router, result))
+            }
+        };
+
+        x.copy_from(&self.buf_residual);
+        x.add_(&self.buf_mixer_out);
+        out
+    }
+
+    /// Mutable access to the channel mixer (needed for router training to
+    /// reach the underlying ExpertRouter).
+    pub fn channel_mixer_mut(&mut self) -> &mut ChannelMixer {
+        &mut self.channel_mixer
+    }
+
     /// Forward: single token step. Zero heap allocations.
     pub fn forward(&mut self, x: &mut Tensor, dispatch: &KernelDispatch) -> Option<RouteResult> {
         // Save residual

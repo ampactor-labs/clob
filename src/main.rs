@@ -143,6 +143,10 @@ enum Commands {
         /// Head C is predicted to be unreliable.
         #[arg(long)]
         meta_critic: Option<PathBuf>,
+        /// Load a trained routers side-file (Phase F). Replaces MoE router
+        /// weights with the trained version before ingestion.
+        #[arg(long)]
+        routers: Option<PathBuf>,
         /// Enable adaptive test-time compute: when Head C signals low
         /// confidence, the block stack iterates extra times before
         /// unembedding. Requires --confidence-head to be set.
@@ -222,6 +226,43 @@ enum Commands {
         /// Cap on tokens to evaluate (0 = unlimited).
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
+    },
+    /// Phase F (2/2): Train MoE routers via REINFORCE-style policy gradient.
+    /// Streams a corpus through the model in training mode with counterfactual
+    /// sampling, computes per-token CE advantage against an EMA baseline, and
+    /// applies AdamW to each MoE layer's router weights every N tokens.
+    /// Rewrites the model file in place once training completes.
+    TrainRouter {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Counterfactual sampling rate: probability of forcing top-2 over top-1.
+        #[arg(long, default_value_t = 0.1)]
+        cf_rate: f32,
+        /// Baseline EMA decay (closer to 1.0 = slower baseline).
+        #[arg(long, default_value_t = 0.98)]
+        baseline_decay: f32,
+        /// Adam learning rate.
+        #[arg(long, default_value_t = 1e-3)]
+        lr: f32,
+        /// Adam weight decay.
+        #[arg(long, default_value_t = 0.01)]
+        weight_decay: f32,
+        /// Gradient clipping (max l2 norm).
+        #[arg(long, default_value_t = 1.0)]
+        clip_norm: f32,
+        /// Tokens per AdamW step (accumulate gradient across this many).
+        #[arg(long, default_value_t = 64)]
+        batch_size: usize,
+        /// Cap on total training tokens (0 = full corpus).
+        #[arg(long, default_value_t = 0)]
+        max_tokens: usize,
+        /// Output path for the updated model. Defaults to overwriting input.
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
     /// Train a confidence head (Head C) online: same shape as Calibrate, but
     /// targets a separate linear probe used by adaptive decode. Keeps heads
@@ -359,8 +400,8 @@ fn main() {
         }
         Commands::Ingest {
             model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens,
-            metrics_out, metrics_window, confidence_head, meta_critic, adaptive_compute,
-            adaptive_max_extra, adaptive_z, meta_unreliable_threshold,
+            metrics_out, metrics_window, confidence_head, meta_critic, routers,
+            adaptive_compute, adaptive_max_extra, adaptive_z, meta_unreliable_threshold,
         } => {
             let adaptive = AdaptiveConfig {
                 enabled: adaptive_compute,
@@ -371,7 +412,7 @@ fn main() {
             cmd_ingest(
                 &model, &input, &memory_dir, &tokenizer, &modules_dir, &critic,
                 max_tokens, &metrics_out, metrics_window, &confidence_head,
-                &meta_critic, adaptive,
+                &meta_critic, &routers, adaptive,
             );
         }
         Commands::ActiveIngest {
@@ -387,6 +428,15 @@ fn main() {
         }
         Commands::Metrics { path, tail } => {
             cmd_metrics(&path, tail);
+        }
+        Commands::TrainRouter {
+            model, corpus, tokenizer, cf_rate, baseline_decay, lr, weight_decay,
+            clip_norm, batch_size, max_tokens, output,
+        } => {
+            cmd_train_router(
+                &model, &corpus, &tokenizer, cf_rate, baseline_decay, lr,
+                weight_decay, clip_norm, batch_size, max_tokens, &output,
+            );
         }
         Commands::CalibrateConfidence {
             model, corpus, tokenizer, output, lr, epochs, max_tokens, meta_out, meta_refresh,
@@ -865,7 +915,7 @@ fn cmd_ingest(
     critic_path: &Option<PathBuf>, max_tokens: usize,
     metrics_out: &Option<PathBuf>, metrics_window: u64,
     confidence_head_path: &Option<PathBuf>, meta_critic_path: &Option<PathBuf>,
-    adaptive: AdaptiveConfig,
+    routers_path: &Option<PathBuf>, adaptive: AdaptiveConfig,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[ingest] Loading model from {:?}", model_path);
@@ -880,6 +930,9 @@ fn cmd_ingest(
     }
     if let Some(p) = meta_critic_path.as_ref() {
         apply_meta_critic_file(&mut model, p);
+    }
+    if let Some(p) = routers_path.as_ref() {
+        apply_routers_file(&mut model, p);
     }
     model.adaptive_config = adaptive;
     if adaptive.enabled && !model.has_confidence_head() {
@@ -1461,6 +1514,162 @@ fn cmd_calibrate(
         println!("{{\"n_trained\":{},\"mse\":{:.6},\"pearson\":{:.6}}}",
             model.energy_critic().n_trained(), model.energy_critic().train_mse(), r);
     }
+}
+
+fn cmd_train_router(
+    model_path: &PathBuf, corpus_path: &PathBuf,
+    tokenizer_path: &Option<PathBuf>,
+    cf_rate: f32, baseline_decay: f32, lr: f32, weight_decay: f32,
+    clip_norm: f32, batch_size: usize, max_tokens: usize,
+    output: &Option<PathBuf>,
+) {
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[router] Loading model from {:?}", model_path);
+    let mut model = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model.config);
+
+    let moe_layers = model.moe_layer_indices();
+    if moe_layers.is_empty() {
+        eprintln!("[router] model has no MoE layers — nothing to train");
+        return;
+    }
+    eprintln!("[router] {} MoE layers: {:?}", moe_layers.len(), moe_layers);
+    eprintln!("[router] cf_rate={}, lr={}, batch_size={}, baseline_decay={}",
+        cf_rate, lr, batch_size, baseline_decay);
+
+    // Snapshot original weights per layer for l2-drift reporting.
+    let mut orig_weights: std::collections::HashMap<usize, Vec<f32>> = std::collections::HashMap::new();
+    for &li in &moe_layers {
+        if let Some(r) = model.router_mut(li) {
+            orig_weights.insert(li, r.weights().to_vec());
+            r.reset_training_state();
+        }
+    }
+
+    let text = std::fs::read_to_string(corpus_path).expect("failed to read corpus");
+    let tokens = tokenizer.encode(&text);
+    let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    eprintln!("[router] training on {} tokens", limit);
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+    let mut baseline: f64 = 0.0;
+    let mut baseline_initialized = false;
+    let mut n_cf = 0u64;
+    let mut total_steps = 0u64;
+
+    model.reset_state();
+    for i in 0..limit.saturating_sub(1) {
+        let (logits, captures) = model.decode_step_training(tokens[i], &mut rng, cf_rate);
+        let p = prob_of_token(logits.data(), tokens[i + 1]);
+        let nll = -(p.max(1e-12) as f64).ln();
+
+        // Initialize baseline to first observed NLL.
+        if !baseline_initialized {
+            baseline = nll;
+            baseline_initialized = true;
+        }
+        let advantage = (baseline - nll) as f32;
+        let bd = baseline_decay as f64;
+        baseline = bd * baseline + (1.0 - bd) * nll;
+
+        // Update each MoE layer's router with its own hidden/route result.
+        for (layer_idx, capture) in moe_layers.iter().zip(captures.iter().filter_map(|c| c.as_ref())) {
+            let (hidden_at_router, route) = capture;
+            if route.counterfactual {
+                n_cf += 1;
+            }
+            if let Some(router) = model.router_mut(*layer_idx) {
+                router.accumulate_policy_gradient(
+                    hidden_at_router,
+                    &route.expert_indices,
+                    &route.full_probs,
+                    advantage,
+                );
+                if route.counterfactual {
+                    router.record_counterfactual();
+                }
+            }
+        }
+
+        // AdamW step every batch_size tokens, for each layer independently.
+        if (i + 1) % batch_size == 0 {
+            let mut max_update = 0.0f32;
+            for &li in &moe_layers {
+                if let Some(router) = model.router_mut(li) {
+                    let u = router.apply_adam(lr, weight_decay, 0.9, 0.999, 1e-8, clip_norm);
+                    max_update = max_update.max(u);
+                }
+            }
+            total_steps += 1;
+            if total_steps % 10 == 0 {
+                eprintln!("[router] step {} (tokens={}): baseline_nll={:.4}, last_nll={:.4}, advantage={:+.4}, cf={}, max_update_norm={:.6}",
+                    total_steps, i + 1, baseline, nll, advantage, n_cf, max_update);
+            }
+        }
+    }
+
+    // Final AdamW step on partial batch.
+    for &li in &moe_layers {
+        if let Some(router) = model.router_mut(li) {
+            if router.n_accumulated() > 0 {
+                router.apply_adam(lr, weight_decay, 0.9, 0.999, 1e-8, clip_norm);
+            }
+        }
+    }
+
+    // Report per-layer L2 drift + save to side-file.
+    let mut side_file: Vec<(u32, Vec<f32>)> = Vec::new();
+    eprintln!("[router] final per-layer diagnostics:");
+    for &li in &moe_layers {
+        let orig = orig_weights.get(&li).unwrap();
+        let router = model.router_mut(li).unwrap();
+        let new_w = router.weights();
+        let delta_sq: f32 = orig.iter().zip(new_w.iter()).map(|(a, b)| (a - b).powi(2)).sum();
+        let drift = delta_sq.sqrt();
+        let orig_norm: f32 = orig.iter().map(|w| w * w).sum::<f32>().sqrt();
+        eprintln!("  layer {}: steps={}, counterfactuals={}, l2_drift={:.5} (original_norm={:.4}, relative={:.2}%)",
+            li, router.step_count(), router.counterfactual_count(), drift, orig_norm,
+            100.0 * drift / orig_norm.max(1e-8));
+        side_file.push((li as u32, new_w.to_vec()));
+    }
+
+    let out_path = output.clone().unwrap_or_else(|| {
+        let mut p = model_path.clone();
+        let stem = p.file_stem().unwrap().to_string_lossy().into_owned();
+        p.set_file_name(format!("{}_routers.bin", stem));
+        p
+    });
+    let bytes = bincode::serialize(&side_file).expect("serialize routers");
+    std::fs::write(&out_path, &bytes).expect("write routers file");
+    eprintln!("[router] wrote {} routers to {:?} ({} bytes, cf_count={}, total_steps={})",
+        side_file.len(), out_path, bytes.len(), n_cf, total_steps);
+}
+
+fn apply_routers_file(model: &mut CoreModel, path: &Path) -> bool {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => { eprintln!("[routers] {:?}: {}", path, e); return false; }
+    };
+    let loaded: Vec<(u32, Vec<f32>)> = match bincode::deserialize(&bytes) {
+        Ok(v) => v,
+        Err(e) => { eprintln!("[routers] parse {:?}: {}", path, e); return false; }
+    };
+    let mut applied = 0;
+    for (layer_idx, new_w) in loaded {
+        if let Some(router) = model.router_mut(layer_idx as usize) {
+            if router.weights().len() != new_w.len() {
+                eprintln!("[routers] layer {} weight-size mismatch ({} vs {}); skipping",
+                    layer_idx, router.weights().len(), new_w.len());
+                continue;
+            }
+            router.weights_mut().copy_from_slice(&new_w);
+            applied += 1;
+        } else {
+            eprintln!("[routers] layer {} is not MoE in the loaded model; skipping", layer_idx);
+        }
+    }
+    eprintln!("[routers] applied {} routers from {:?}", applied, path);
+    applied > 0
 }
 
 fn cmd_calibrate_confidence(
