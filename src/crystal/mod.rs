@@ -10,3 +10,4 @@ pub mod crystallize;
 pub mod module;
 pub mod engine;
 pub mod store;
+pub mod synth;

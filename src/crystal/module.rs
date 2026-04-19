@@ -3,6 +3,7 @@
 //! Contains a small TernaryLinear that encodes one learned pattern.
 //! Serializable. Loadable via mmap. Has a domain signature for routing.
 
+use crate::crystal::synth::Program;
 use crate::tensor::ternary::TernaryMatrix;
 use crate::tensor::Tensor;
 use crate::simd::KernelDispatch;
@@ -29,6 +30,13 @@ pub struct CrystalModule {
     pub sparsity: f32,
     /// Number of times this module has been activated.
     pub activation_count: u64,
+    /// Phase E: if the ternary matrix is reducible to a short DSL program,
+    /// the program is attached here. Defaults to `None`. Runtime behavior
+    /// is unchanged — the ternary matrix still drives inference — but a
+    /// module with a hint is a candidate for storage compression and for
+    /// future runtime execution through the DSL interpreter.
+    #[serde(default)]
+    pub symbolic_hint: Option<Program>,
 }
 
 impl CrystalModule {
@@ -82,6 +90,23 @@ impl CrystalModule {
     /// Byte size of this module's weight data.
     pub fn weight_bytes(&self) -> usize {
         self.weight.byte_size()
+    }
+
+    /// Whether this module is tagged with a symbolic program.
+    pub fn is_symbolic(&self) -> bool {
+        self.symbolic_hint.is_some()
+    }
+
+    /// Compression ratio of the symbolic form relative to the ternary
+    /// matrix, 0.0 if no hint is attached.
+    pub fn symbolic_compression_ratio(&self) -> f32 {
+        match self.symbolic_hint.as_ref() {
+            Some(p) => {
+                let matrix_bytes = self.weight.byte_size().max(1) as f32;
+                p.encoded_size() as f32 / matrix_bytes
+            }
+            None => 1.0,
+        }
     }
 }
 

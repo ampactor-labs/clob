@@ -118,8 +118,13 @@ impl CrystallizationEngine {
                 let module = crystallize::crystallize(&pattern, self.next_id);
                 self.next_id += 1;
 
-                eprintln!("[crystal] Crystallized module #{}: sparsity={:.1}%, weight_bytes={}",
-                    module.id, module.sparsity * 100.0, module.weight_bytes());
+                let sym = match module.symbolic_hint.as_ref() {
+                    Some(p) => format!(", symbolic={}ops ({:.1}% of matrix)", p.ops.len(),
+                        module.symbolic_compression_ratio() * 100.0),
+                    None => String::new(),
+                };
+                eprintln!("[crystal] Crystallized module #{}: sparsity={:.1}%, weight_bytes={}{}",
+                    module.id, module.sparsity * 100.0, module.weight_bytes(), sym);
 
                 consumed_timestamps.extend_from_slice(&pattern.source_timestamps);
                 self.modules.push(module);
@@ -174,14 +179,20 @@ impl CrystallizationEngine {
         self.modules.iter().map(|m| m.activation_count).sum()
     }
 
+    /// Number of modules with a symbolic hint attached.
+    pub fn n_symbolic(&self) -> usize {
+        self.modules.iter().filter(|m| m.is_symbolic()).count()
+    }
+
     /// Stats string.
     pub fn stats(&self) -> String {
         format!(
-            "modules={}, total_activations={}, avg_sparsity={:.1}%",
+            "modules={}, total_activations={}, avg_sparsity={:.1}%, symbolic={}",
             self.modules.len(),
             self.total_activations(),
             if self.modules.is_empty() { 0.0 }
             else { self.modules.iter().map(|m| m.sparsity).sum::<f32>() / self.modules.len() as f32 * 100.0 },
+            self.n_symbolic(),
         )
     }
 }

@@ -101,6 +101,7 @@ pub fn unpack_module(msg: &Message) -> Option<CrystalModule> {
             mdl_ratio: meta.mdl_ratio,
             sparsity,
             activation_count: 0, // Reset for local tracking
+            symbolic_hint: None, // Network-received modules never carry Phase E hints today
         })
     } else {
         None
