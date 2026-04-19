@@ -23,6 +23,10 @@ pub struct MetricsWindow {
     /// Counter of extra SSM steps triggered by adaptive compute
     /// (Phase B+C will begin populating this; stays zero until then).
     extra_steps: u64,
+    /// Count of tokens where the MetaCritic suppressed an adaptive step that
+    /// Head C would otherwise have triggered (Phase F). Stays zero until a
+    /// MetaCritic is installed.
+    meta_suppressed: u64,
     /// Count of tokens gated as "novel" by the energy critic.
     novel_tokens: u64,
 }
@@ -39,6 +43,7 @@ impl MetricsWindow {
             sum_nll_holdout: 0.0,
             n_holdout: 0,
             extra_steps: 0,
+            meta_suppressed: 0,
             novel_tokens: 0,
         }
     }
@@ -57,6 +62,10 @@ impl MetricsWindow {
 
     pub fn record_extra_step(&mut self) {
         self.extra_steps += 1;
+    }
+
+    pub fn record_meta_suppressed(&mut self) {
+        self.meta_suppressed += 1;
     }
 
     pub fn record_novel(&mut self) {
@@ -104,6 +113,7 @@ impl MetricsWindow {
             j_per_nat,
             tokens_per_sec,
             extra_steps: self.extra_steps,
+            meta_suppressed: self.meta_suppressed,
             novel_tokens: self.novel_tokens,
         }
     }
@@ -120,6 +130,7 @@ pub struct WindowSnapshot {
     pub j_per_nat: f64,
     pub tokens_per_sec: f64,
     pub extra_steps: u64,
+    pub meta_suppressed: u64,
     pub novel_tokens: u64,
 }
 
@@ -132,7 +143,7 @@ impl WindowSnapshot {
             None => "null".to_string(),
         };
         format!(
-            "{{\"idx\":{},\"tokens\":{},\"seconds\":{},\"joules\":{},\"mean_nll\":{},\"mean_nll_holdout\":{},\"j_per_nat\":{},\"tokens_per_sec\":{},\"extra_steps\":{},\"novel_tokens\":{}}}",
+            "{{\"idx\":{},\"tokens\":{},\"seconds\":{},\"joules\":{},\"mean_nll\":{},\"mean_nll_holdout\":{},\"j_per_nat\":{},\"tokens_per_sec\":{},\"extra_steps\":{},\"meta_suppressed\":{},\"novel_tokens\":{}}}",
             self.window_idx,
             self.tokens,
             self.seconds,
@@ -142,6 +153,7 @@ impl WindowSnapshot {
             self.j_per_nat,
             self.tokens_per_sec,
             self.extra_steps,
+            self.meta_suppressed,
             self.novel_tokens,
         )
     }
@@ -159,6 +171,7 @@ impl WindowSnapshot {
         let mut j_per_nat = 0.0f64;
         let mut tokens_per_sec = 0.0f64;
         let mut extra_steps = 0u64;
+        let mut meta_suppressed = 0u64;
         let mut novel_tokens = 0u64;
 
         for field in inner.split(',') {
@@ -177,6 +190,7 @@ impl WindowSnapshot {
                 "j_per_nat" => j_per_nat = v.parse().ok()?,
                 "tokens_per_sec" => tokens_per_sec = v.parse().ok()?,
                 "extra_steps" => extra_steps = v.parse().ok()?,
+                "meta_suppressed" => meta_suppressed = v.parse().ok()?,
                 "novel_tokens" => novel_tokens = v.parse().ok()?,
                 _ => {}
             }
@@ -192,6 +206,7 @@ impl WindowSnapshot {
             j_per_nat,
             tokens_per_sec,
             extra_steps,
+            meta_suppressed,
             novel_tokens,
         })
     }

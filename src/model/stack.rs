@@ -7,7 +7,7 @@ use crate::crystal::detector::NoveltyDetector;
 use crate::crystal::module::CrystalModule;
 use crate::model::block::Block;
 use crate::model::config::KernelConfig;
-use crate::nn::confidence::{AdaptiveConfig, ConfidenceHead};
+use crate::nn::confidence::{AdaptiveConfig, ConfidenceHead, MetaCritic};
 use crate::nn::embed::Embedding;
 use crate::nn::energy::EnergyCritic;
 use crate::nn::rmsnorm::RMSNorm;
@@ -39,11 +39,21 @@ pub struct CoreModel {
     confidence_head: Option<ConfidenceHead>,
     /// Per-head adaptive threshold for Head C.
     confidence_detector: NoveltyDetector,
+    /// Phase F: MetaCritic gating Head C's adaptive signal. When its
+    /// predicted absolute error for Head C exceeds
+    /// `adaptive_config.meta_unreliable_threshold`, we SKIP adaptive
+    /// iteration at this hidden state — Head C's uncertainty signal is
+    /// itself unreliable.
+    meta_critic: Option<MetaCritic>,
     /// Adaptive-decode configuration.
     pub adaptive_config: AdaptiveConfig,
     /// Counter: number of extra SSM iterations taken since last reset. Read
     /// by callers who want to feed it into the metrics window.
     extra_steps_counter: u64,
+    /// Counter: number of tokens where adaptive WOULD have fired but
+    /// MetaCritic suppressed it. Diagnostic signal for the target-network
+    /// stability probe.
+    meta_suppressed_counter: u64,
 }
 
 impl CoreModel {
@@ -75,8 +85,10 @@ impl CoreModel {
             buf_module_out,
             confidence_head: None,
             confidence_detector: NoveltyDetector::new(),
+            meta_critic: None,
             adaptive_config: AdaptiveConfig::default(),
             extra_steps_counter: 0,
+            meta_suppressed_counter: 0,
         }
     }
 
@@ -101,8 +113,10 @@ impl CoreModel {
             buf_module_out,
             confidence_head: None,
             confidence_detector: NoveltyDetector::new(),
+            meta_critic: None,
             adaptive_config: AdaptiveConfig::default(),
             extra_steps_counter: 0,
+            meta_suppressed_counter: 0,
         }
     }
 
@@ -132,6 +146,26 @@ impl CoreModel {
     /// Callers drain this into the metrics window per token.
     pub fn take_extra_steps(&mut self) -> u64 {
         std::mem::take(&mut self.extra_steps_counter)
+    }
+
+    /// Install a MetaCritic. Its `dim()` must equal `config.d_model`.
+    pub fn set_meta_critic(&mut self, meta: MetaCritic) {
+        assert_eq!(
+            meta.dim(), self.config.d_model,
+            "meta critic dim {} != d_model {}", meta.dim(), self.config.d_model,
+        );
+        self.meta_critic = Some(meta);
+    }
+
+    pub fn meta_critic(&self) -> Option<&MetaCritic> { self.meta_critic.as_ref() }
+    pub fn has_meta_critic(&self) -> bool { self.meta_critic.is_some() }
+
+    /// Number of tokens where the MetaCritic suppressed an adaptive step.
+    /// Drained by the caller into metrics; a non-zero value here with a
+    /// stable Head-C MSE is the Phase F "target-network is doing its job"
+    /// signal.
+    pub fn take_meta_suppressed(&mut self) -> u64 {
+        std::mem::take(&mut self.meta_suppressed_counter)
     }
 
     /// Install a crystallized knowledge module.
@@ -201,20 +235,33 @@ impl CoreModel {
 
         // Adaptive pondering: iterate the block stack extra times when
         // Head C signals uncertainty. Each extra pass refines the SSM
-        // state on the *current* hidden without re-embedding.
+        // state on the *current* hidden without re-embedding. The
+        // MetaCritic can suppress adaptive iteration at hidden states
+        // where Head C's uncertainty signal is itself unreliable.
         if self.adaptive_config.enabled {
             if let Some(head) = self.confidence_head.as_ref() {
                 let predicted_nll = head.predict(self.buf_x.data());
                 let novelty = self.confidence_detector.evaluate(predicted_nll);
                 if novelty.is_novel && novelty.z >= self.adaptive_config.z_threshold {
-                    let budget = self.adaptive_config.max_extra_steps as usize;
-                    for _ in 0..budget {
-                        for block in self.blocks.iter_mut() {
-                            let _ = block.forward(&mut self.buf_x, &self.dispatch);
+                    let meta_suppress = match self.meta_critic.as_ref() {
+                        Some(meta) => {
+                            meta.predict(self.buf_x.data())
+                                >= self.adaptive_config.meta_unreliable_threshold
                         }
-                        self.final_norm.forward(&mut self.buf_x, &self.dispatch);
-                        self.apply_crystal_modules();
-                        self.extra_steps_counter += 1;
+                        None => false,
+                    };
+                    if meta_suppress {
+                        self.meta_suppressed_counter += 1;
+                    } else {
+                        let budget = self.adaptive_config.max_extra_steps as usize;
+                        for _ in 0..budget {
+                            for block in self.blocks.iter_mut() {
+                                let _ = block.forward(&mut self.buf_x, &self.dispatch);
+                            }
+                            self.final_norm.forward(&mut self.buf_x, &self.dispatch);
+                            self.apply_crystal_modules();
+                            self.extra_steps_counter += 1;
+                        }
                     }
                 }
             }

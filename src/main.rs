@@ -12,7 +12,7 @@ use clob::model::generate::{self, SamplingConfig};
 use clob::model::stack::CoreModel;
 use clob::nn::energy::EnergyCritic;
 use clob::metrics::EnergyMeter;
-use clob::nn::confidence::{AdaptiveConfig, ConfidenceHead};
+use clob::nn::confidence::{AdaptiveConfig, ConfidenceHead, MetaCritic};
 use clob::token::bpe::BpeTokenizer;
 use rand::SeedableRng;
 use rand::Rng;
@@ -138,6 +138,11 @@ enum Commands {
         /// Load a trained confidence head (Head C) side-file before ingesting.
         #[arg(long)]
         confidence_head: Option<PathBuf>,
+        /// Load a trained MetaCritic side-file (Phase F). When present, gates
+        /// adaptive iteration — suppresses extra steps at hidden states where
+        /// Head C is predicted to be unreliable.
+        #[arg(long)]
+        meta_critic: Option<PathBuf>,
         /// Enable adaptive test-time compute: when Head C signals low
         /// confidence, the block stack iterates extra times before
         /// unembedding. Requires --confidence-head to be set.
@@ -149,6 +154,9 @@ enum Commands {
         /// Z-score threshold on Head C's detector for firing adaptive compute.
         #[arg(long, default_value_t = 1.0)]
         adaptive_z: f32,
+        /// MetaCritic prediction threshold: above this, adaptive is suppressed.
+        #[arg(long, default_value_t = 2.0)]
+        meta_unreliable_threshold: f32,
     },
     /// Active ingest: rotate probe batches among multiple sources, score each
     /// by acquisition `max(N − C, 0) / joules_per_token`, spend the next
@@ -234,6 +242,14 @@ enum Commands {
         epochs: usize,
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
+        /// Also train a MetaCritic (Phase F target-network) alongside the
+        /// confidence head, saving it to this path. Target refreshes every
+        /// `--meta-refresh` steps.
+        #[arg(long)]
+        meta_out: Option<PathBuf>,
+        /// Training steps between target-snapshot refreshes.
+        #[arg(long, default_value_t = 500)]
+        meta_refresh: u64,
     },
     /// Train the energy critic online: stream a corpus, SGD the critic on
     /// MSE against per-step NLL, save it to a side file. No episode storage,
@@ -343,17 +359,19 @@ fn main() {
         }
         Commands::Ingest {
             model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens,
-            metrics_out, metrics_window, confidence_head, adaptive_compute,
-            adaptive_max_extra, adaptive_z,
+            metrics_out, metrics_window, confidence_head, meta_critic, adaptive_compute,
+            adaptive_max_extra, adaptive_z, meta_unreliable_threshold,
         } => {
             let adaptive = AdaptiveConfig {
                 enabled: adaptive_compute,
                 max_extra_steps: adaptive_max_extra,
                 z_threshold: adaptive_z,
+                meta_unreliable_threshold,
             };
             cmd_ingest(
                 &model, &input, &memory_dir, &tokenizer, &modules_dir, &critic,
-                max_tokens, &metrics_out, metrics_window, &confidence_head, adaptive,
+                max_tokens, &metrics_out, metrics_window, &confidence_head,
+                &meta_critic, adaptive,
             );
         }
         Commands::ActiveIngest {
@@ -370,8 +388,13 @@ fn main() {
         Commands::Metrics { path, tail } => {
             cmd_metrics(&path, tail);
         }
-        Commands::CalibrateConfidence { model, corpus, tokenizer, output, lr, epochs, max_tokens } => {
-            cmd_calibrate_confidence(&model, &corpus, &tokenizer, &output, lr, epochs, max_tokens);
+        Commands::CalibrateConfidence {
+            model, corpus, tokenizer, output, lr, epochs, max_tokens, meta_out, meta_refresh,
+        } => {
+            cmd_calibrate_confidence(
+                &model, &corpus, &tokenizer, &output, lr, epochs, max_tokens,
+                &meta_out, meta_refresh,
+            );
         }
         Commands::Eval { model, corpus, tokenizer, modules_dir, critic, max_tokens } => {
             cmd_eval(&model, &corpus, &tokenizer, &modules_dir, &critic, max_tokens);
@@ -544,6 +567,32 @@ fn apply_confidence_head_file(model: &mut CoreModel, path: &Path) -> bool {
     eprintln!("[conf] loaded {:?} (dim={}, n_trained={}, mse={:.4})",
         path, head.dim(), head.n_trained(), head.train_mse());
     model.set_confidence_head(head);
+    true
+}
+
+fn apply_meta_critic_file(model: &mut CoreModel, path: &Path) -> bool {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[meta] {:?}: {}", path, e);
+            return false;
+        }
+    };
+    let meta = match MetaCritic::from_bytes(&bytes) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("[meta] parse {:?}: {}", path, e);
+            return false;
+        }
+    };
+    if meta.dim() != model.config.d_model {
+        eprintln!("[meta] dim {} != model d_model {}; refusing to install",
+            meta.dim(), model.config.d_model);
+        std::process::exit(2);
+    }
+    eprintln!("[meta] loaded {:?} (dim={}, n_trained={}, mse={:.4}, refresh_period={})",
+        path, meta.dim(), meta.n_trained(), meta.train_mse(), meta.refresh_period());
+    model.set_meta_critic(meta);
     true
 }
 
@@ -815,7 +864,8 @@ fn cmd_ingest(
     tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
     critic_path: &Option<PathBuf>, max_tokens: usize,
     metrics_out: &Option<PathBuf>, metrics_window: u64,
-    confidence_head_path: &Option<PathBuf>, adaptive: AdaptiveConfig,
+    confidence_head_path: &Option<PathBuf>, meta_critic_path: &Option<PathBuf>,
+    adaptive: AdaptiveConfig,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[ingest] Loading model from {:?}", model_path);
@@ -827,6 +877,9 @@ fn cmd_ingest(
     }
     if let Some(p) = confidence_head_path.as_ref() {
         apply_confidence_head_file(&mut model, p);
+    }
+    if let Some(p) = meta_critic_path.as_ref() {
+        apply_meta_critic_file(&mut model, p);
     }
     model.adaptive_config = adaptive;
     if adaptive.enabled && !model.has_confidence_head() {
@@ -915,6 +968,7 @@ fn cmd_ingest(
 
         // Metrics: record this step and flush a window if we've crossed the boundary.
         let extra_this_step = model.take_extra_steps();
+        let meta_suppressed_this_step = model.take_meta_suppressed();
         if let Some(sink) = metrics.as_mut() {
             let (joules, now) = meter.joules_since(step_start);
             let nanos = now.duration_since(step_start).as_nanos();
@@ -922,6 +976,9 @@ fn cmd_ingest(
             sink.record(nll, joules, nanos, novelty.is_novel);
             for _ in 0..extra_this_step {
                 sink.record_extra_step();
+            }
+            for _ in 0..meta_suppressed_this_step {
+                sink.record_meta_suppressed();
             }
             sink.maybe_flush();
         } else {
@@ -975,6 +1032,10 @@ impl MetricsSink {
 
     fn record_extra_step(&mut self) {
         self.window.record_extra_step();
+    }
+
+    fn record_meta_suppressed(&mut self) {
+        self.window.record_meta_suppressed();
     }
 
     fn maybe_flush(&mut self) {
@@ -1406,6 +1467,7 @@ fn cmd_calibrate_confidence(
     model_path: &PathBuf, corpus_path: &PathBuf,
     tokenizer_path: &Option<PathBuf>, output: &PathBuf,
     lr: f32, epochs: usize, max_tokens: usize,
+    meta_out: &Option<PathBuf>, meta_refresh: u64,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[conf-cal] Loading model from {:?}", model_path);
@@ -1413,13 +1475,19 @@ fn cmd_calibrate_confidence(
     assert_vocab_compatible(&tokenizer, &model.config);
 
     let d_model = model.config.d_model;
-    let mut head = ConfidenceHead::random(d_model, &mut rand::rngs::StdRng::seed_from_u64(42));
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let mut head = ConfidenceHead::random(d_model, &mut rng);
+    let mut meta: Option<MetaCritic> = meta_out.as_ref().map(|_| {
+        MetaCritic::new(d_model, &mut rng, head.clone(), meta_refresh)
+    });
 
     eprintln!("[conf-cal] Tokenizing {:?}", corpus_path);
     let text = std::fs::read_to_string(corpus_path).expect("failed to read corpus");
     let tokens = tokenizer.encode(&text);
     let per_epoch = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
-    eprintln!("[conf-cal] {} tokens × {} epochs, lr={}", per_epoch, epochs, lr);
+    eprintln!("[conf-cal] {} tokens × {} epochs, lr={}{}",
+        per_epoch, epochs, lr,
+        if meta.is_some() { format!(", meta-critic refresh every {} steps", meta_refresh) } else { "".into() });
 
     let mut hidden_scratch: Vec<f32> = vec![0.0; d_model];
     let start = Instant::now();
@@ -1428,6 +1496,7 @@ fn cmd_calibrate_confidence(
         model.reset_state();
         let mut total_nll = 0.0f64;
         let mut total_sse = 0.0f64;
+        let mut total_meta_sse = 0.0f64;
         let mut n = 0usize;
 
         for i in 0..per_epoch.saturating_sub(1) {
@@ -1437,6 +1506,14 @@ fn cmd_calibrate_confidence(
             total_nll += nll;
 
             hidden_scratch.copy_from_slice(model.last_hidden().data());
+            // Train the meta-critic FIRST with the head state as it was at
+            // this step — before the head updates on this sample. This is
+            // the clean ordering for target-network training: label is a
+            // property of the current live head, not of its next update.
+            if let Some(m) = meta.as_mut() {
+                let mse = m.train_step(&hidden_scratch, nll as f32, &head, lr);
+                total_meta_sse += mse as f64;
+            }
             let sse = head.train_step(&hidden_scratch, nll as f32, lr);
             total_sse += sse as f64;
             n += 1;
@@ -1444,8 +1521,14 @@ fn cmd_calibrate_confidence(
 
         let mean_nll = if n > 0 { total_nll / n as f64 } else { 0.0 };
         let mean_sse = if n > 0 { total_sse / n as f64 } else { 0.0 };
-        eprintln!("[conf-cal] epoch {}: n={}, mean_nll={:.4}, mean_head_se={:.4}, cumulative_mse={:.4}",
-            epoch + 1, n, mean_nll, mean_sse, head.train_mse());
+        let meta_info = match meta.as_ref() {
+            Some(m) => format!(", meta_se={:.4}, meta_mse_cum={:.4}, steps_since_refresh={}",
+                if n > 0 { total_meta_sse / n as f64 } else { 0.0 },
+                m.train_mse(), m.steps_since_refresh()),
+            None => String::new(),
+        };
+        eprintln!("[conf-cal] epoch {}: n={}, mean_nll={:.4}, mean_head_se={:.4}, cumulative_mse={:.4}{}",
+            epoch + 1, n, mean_nll, mean_sse, head.train_mse(), meta_info);
     }
 
     let bytes = head.to_bytes();
@@ -1453,6 +1536,13 @@ fn cmd_calibrate_confidence(
     let elapsed = start.elapsed();
     eprintln!("[conf-cal] wrote {:?} ({} bytes), {:.2}s total, n_trained={}",
         output, bytes.len(), elapsed.as_secs_f64(), head.n_trained());
+
+    if let (Some(path), Some(m)) = (meta_out.as_ref(), meta.as_ref()) {
+        let meta_bytes = m.to_bytes();
+        std::fs::write(path, &meta_bytes).expect("failed to write meta critic file");
+        eprintln!("[conf-cal] wrote meta {:?} ({} bytes), n_trained={}, mse={:.4}",
+            path, meta_bytes.len(), m.n_trained(), m.train_mse());
+    }
 
     // Diagnostic: correlation between head output and NLL on a fresh pass.
     model.reset_state();
