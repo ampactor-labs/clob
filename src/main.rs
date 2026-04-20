@@ -832,6 +832,10 @@ fn cmd_synth(output: &PathBuf, config_str: &str, seed: u64) {
     io::synth::generate_synthetic(&config, output, &mut rng).expect("failed to generate");
     let file_size = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
     eprintln!("[synth] Done: {:?} ({:.2} MB)", output, file_size as f64 / (1024.0 * 1024.0));
+    let manifest = clob::config::manifest::RunManifest::new("synth").with_seed(seed);
+    if let Err(e) = manifest.save_sidecar(output) {
+        eprintln!("[synth] manifest write failed: {}", e);
+    }
 }
 
 fn cmd_bench(config_str: &str, seq_len: usize, decode_steps: usize) {
@@ -1500,6 +1504,12 @@ fn cmd_calibrate(
     let elapsed = start.elapsed();
     eprintln!("[calibrate] wrote {:?} ({} bytes), {:.2}s total, n_trained={}",
         output, bytes.len(), elapsed.as_secs_f64(), model.energy_critic().n_trained());
+    let manifest = clob::config::manifest::RunManifest::new("calibrate")
+        .with_input("model", model_path)
+        .with_input("corpus", corpus_path);
+    if let Err(e) = manifest.save_sidecar(output) {
+        eprintln!("[calibrate] manifest write failed: {}", e);
+    }
 
     // Diagnostic: correlation between critic output and NLL on a single fresh pass.
     model.reset_state();
@@ -1657,6 +1667,13 @@ fn cmd_train_router(
     std::fs::write(&out_path, &bytes).expect("write routers file");
     eprintln!("[router] wrote {} routers to {:?} ({} bytes, cf_count={}, total_steps={})",
         side_file.len(), out_path, bytes.len(), n_cf, total_steps);
+    let manifest = clob::config::manifest::RunManifest::new("train-router")
+        .with_seed(seed)
+        .with_input("model", model_path)
+        .with_input("corpus", corpus_path);
+    if let Err(e) = manifest.save_sidecar(&out_path) {
+        eprintln!("[router] manifest write failed: {}", e);
+    }
 }
 
 fn apply_routers_file(model: &mut CoreModel, path: &Path) -> bool {
@@ -1761,12 +1778,27 @@ fn cmd_calibrate_confidence(
     let elapsed = start.elapsed();
     eprintln!("[conf-cal] wrote {:?} ({} bytes), {:.2}s total, n_trained={}",
         output, bytes.len(), elapsed.as_secs_f64(), head.n_trained());
+    let head_manifest = clob::config::manifest::RunManifest::new("calibrate-confidence")
+        .with_seed(seed)
+        .with_input("model", model_path)
+        .with_input("corpus", corpus_path);
+    if let Err(e) = head_manifest.save_sidecar(output) {
+        eprintln!("[conf-cal] head manifest write failed: {}", e);
+    }
 
     if let (Some(path), Some(m)) = (meta_out.as_ref(), meta.as_ref()) {
         let meta_bytes = m.to_bytes();
         std::fs::write(path, &meta_bytes).expect("failed to write meta critic file");
         eprintln!("[conf-cal] wrote meta {:?} ({} bytes), n_trained={}, mse={:.4}",
             path, meta_bytes.len(), m.n_trained(), m.train_mse());
+        let meta_manifest = clob::config::manifest::RunManifest::new("calibrate-confidence:meta")
+            .with_seed(seed)
+            .with_input("model", model_path)
+            .with_input("corpus", corpus_path)
+            .with_input("confidence_head", output);
+        if let Err(e) = meta_manifest.save_sidecar(path) {
+            eprintln!("[conf-cal] meta manifest write failed: {}", e);
+        }
     }
 
     // Diagnostic: correlation between head output and NLL on a fresh pass.

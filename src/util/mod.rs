@@ -3,3 +3,4 @@
 //! in this module depends on any subsystem beyond std + rand.
 
 pub mod seed;
+pub mod sha;
