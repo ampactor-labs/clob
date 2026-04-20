@@ -176,6 +176,11 @@ impl Block {
         route_result
     }
 
+    pub fn norm1(&self) -> &RMSNorm { &self.norm1 }
+    pub fn norm2(&self) -> &RMSNorm { &self.norm2 }
+    pub fn ssm(&self) -> &SelectiveSSM { &self.ssm }
+    pub fn channel_mixer(&self) -> &ChannelMixer { &self.channel_mixer }
+
     pub fn reset_state(&mut self) {
         self.ssm.reset_state();
         if let ChannelMixer::Dense { mlgru, .. } = &mut self.channel_mixer {

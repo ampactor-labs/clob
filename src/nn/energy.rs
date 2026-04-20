@@ -76,6 +76,8 @@ impl EnergyCritic {
 
     /// Current baseline energy.
     pub fn baseline(&self) -> f32 { self.baseline }
+    pub fn weights(&self) -> &[f32] { &self.weights }
+    pub fn bias(&self) -> f32 { self.bias }
 
     /// Total observations.
     pub fn n_observed(&self) -> u64 { self.n_observed }

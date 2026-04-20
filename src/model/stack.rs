@@ -336,6 +336,13 @@ impl CoreModel {
         }
     }
 
+    /// Borrow the embedding table layer.
+    pub fn embedding(&self) -> &Embedding { &self.embedding }
+    /// Borrow the final normalization layer.
+    pub fn final_norm(&self) -> &RMSNorm { &self.final_norm }
+    /// Borrow the block stack.
+    pub fn blocks(&self) -> &[Block] { &self.blocks }
+
     /// Indices of MoE layers.
     pub fn moe_layer_indices(&self) -> Vec<usize> {
         self.blocks.iter().enumerate()

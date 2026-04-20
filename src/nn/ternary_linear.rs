@@ -44,4 +44,6 @@ impl TernaryLinear {
 
     pub fn in_features(&self) -> usize { self.weight.cols() }
     pub fn out_features(&self) -> usize { self.weight.rows() }
+    pub fn weight_mat(&self) -> &TernaryMatrix { &self.weight }
+    pub fn bias_ref(&self) -> Option<&[f32]> { self.bias.as_deref() }
 }

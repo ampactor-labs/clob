@@ -23,4 +23,5 @@ impl RMSNorm {
     }
 
     pub fn dim(&self) -> usize { self.weight.len() }
+    pub fn weight_slice(&self) -> &[f32] { &self.weight }
 }

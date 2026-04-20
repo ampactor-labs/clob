@@ -137,13 +137,22 @@ pub struct NoiseSource {
 }
 
 impl NoiseSource {
-    pub fn new(vocab_size: u32) -> Self {
+    /// Deterministic noise source seeded by the caller. Phase G removed the
+    /// from_entropy default because it broke reproducibility of
+    /// active-ingest rounds (two runs with the same --seed must produce the
+    /// same commit histogram).
+    pub fn new_seeded(vocab_size: u32, seed: u64) -> Self {
         use rand::SeedableRng;
         Self {
             id: "noise:uniform".to_string(),
             vocab_size,
-            rng: rand::rngs::StdRng::from_entropy(),
+            rng: rand::rngs::StdRng::seed_from_u64(seed),
         }
+    }
+
+    /// Backwards-compat shim; prefer `new_seeded`.
+    pub fn new(vocab_size: u32) -> Self {
+        Self::new_seeded(vocab_size, 0)
     }
 }
 

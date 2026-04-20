@@ -47,6 +47,10 @@ impl MLGRU {
     pub fn reset_state(&mut self) { self.state.fill(0.0); }
     pub fn state(&self) -> &[f32] { &self.state }
 
+    pub fn w_f(&self) -> &TernaryLinear { &self.w_f }
+    pub fn w_c(&self) -> &TernaryLinear { &self.w_c }
+    pub fn w_o(&self) -> &TernaryLinear { &self.w_o }
+
     pub fn forward(&mut self, input: &Tensor, output: &mut Tensor, dispatch: &KernelDispatch) {
         assert_eq!(input.len(), self.d_model);
         assert_eq!(output.len(), self.d_model);

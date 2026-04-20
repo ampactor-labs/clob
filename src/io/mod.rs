@@ -4,3 +4,4 @@ pub mod format;
 pub mod mmap;
 pub mod loader;
 pub mod synth;
+pub mod writer;

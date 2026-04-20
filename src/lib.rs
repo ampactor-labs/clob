@@ -24,3 +24,4 @@ pub mod learn;
 pub mod compile;
 pub mod net;
 pub mod metrics;
+pub mod util;

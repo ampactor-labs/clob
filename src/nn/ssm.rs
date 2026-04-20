@@ -85,6 +85,17 @@ impl SelectiveSSM {
     pub fn reset_state(&mut self) { self.state.fill(0.0); }
     pub fn state(&self) -> &[f32] { &self.state }
 
+    pub fn in_proj(&self) -> &TernaryLinear { &self.in_proj }
+    pub fn x_proj(&self) -> &TernaryLinear { &self.x_proj }
+    pub fn dt_proj(&self) -> &TernaryLinear { &self._dt_proj }
+    pub fn out_proj(&self) -> &TernaryLinear { &self.out_proj }
+    pub fn a_log(&self) -> &[f32] { &self.a_log }
+    pub fn d_param(&self) -> &[f32] { &self.d_param }
+    pub fn dt_bias(&self) -> &[f32] { &self.dt_bias }
+    pub fn n_heads(&self) -> usize { self.n_heads }
+    pub fn d_state(&self) -> usize { self.d_state }
+    pub fn d_head(&self) -> usize { self.d_head }
+
     /// Forward: single-step recurrence, O(1) memory.
     pub fn forward(&mut self, input: &Tensor, output: &mut Tensor, dispatch: &KernelDispatch) {
         let d_model = input.len();

@@ -59,6 +59,10 @@ impl TernaryGLU {
     pub fn d_model(&self) -> usize { self.d_model }
     pub fn d_inner(&self) -> usize { self.d_inner }
 
+    pub fn w_gate(&self) -> &TernaryLinear { &self.w_gate }
+    pub fn w_up(&self) -> &TernaryLinear { &self.w_up }
+    pub fn w_down(&self) -> &TernaryLinear { &self.w_down }
+
     /// Raw memory extents of the ternary weights (for prefetch).
     pub fn memory_extents(&self) -> Vec<(*const u8, usize)> {
         vec![

@@ -169,6 +169,9 @@ enum Commands {
     ActiveIngest {
         #[arg(long)]
         model: PathBuf,
+        /// Root seed for all RNGs (Phase G reproducibility).
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
         /// One or more files to use as sources. Each becomes a `VecSource`
         /// over its tokenized content.
         #[arg(long, value_delimiter = ',')]
@@ -239,6 +242,9 @@ enum Commands {
         corpus: PathBuf,
         #[arg(long)]
         tokenizer: Option<PathBuf>,
+        /// Root seed for all RNGs (Phase G reproducibility).
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
         /// Counterfactual sampling rate: probability of forcing top-2 over top-1.
         #[arg(long, default_value_t = 0.1)]
         cf_rate: f32,
@@ -283,6 +289,9 @@ enum Commands {
         epochs: usize,
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
+        /// Root seed for all RNGs (Phase G reproducibility).
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
         /// Also train a MetaCritic (Phase F target-network) alongside the
         /// confidence head, saving it to this path. Target refreshes every
         /// `--meta-refresh` steps.
@@ -416,12 +425,12 @@ fn main() {
             );
         }
         Commands::ActiveIngest {
-            model, sources, include_noise, memory_dir, tokenizer, critic,
+            model, seed, sources, include_noise, memory_dir, tokenizer, critic,
             confidence_head, probe_tokens, commit_tokens, max_tokens,
             metrics_out, metrics_window,
         } => {
             cmd_active_ingest(
-                &model, &sources, include_noise, &memory_dir, &tokenizer,
+                &model, seed, &sources, include_noise, &memory_dir, &tokenizer,
                 &critic, &confidence_head, probe_tokens, commit_tokens,
                 max_tokens, &metrics_out, metrics_window,
             );
@@ -430,20 +439,20 @@ fn main() {
             cmd_metrics(&path, tail);
         }
         Commands::TrainRouter {
-            model, corpus, tokenizer, cf_rate, baseline_decay, lr, weight_decay,
+            model, corpus, tokenizer, seed, cf_rate, baseline_decay, lr, weight_decay,
             clip_norm, batch_size, max_tokens, output,
         } => {
             cmd_train_router(
-                &model, &corpus, &tokenizer, cf_rate, baseline_decay, lr,
+                &model, &corpus, &tokenizer, seed, cf_rate, baseline_decay, lr,
                 weight_decay, clip_norm, batch_size, max_tokens, &output,
             );
         }
         Commands::CalibrateConfidence {
-            model, corpus, tokenizer, output, lr, epochs, max_tokens, meta_out, meta_refresh,
+            model, corpus, tokenizer, output, lr, epochs, max_tokens, seed, meta_out, meta_refresh,
         } => {
             cmd_calibrate_confidence(
                 &model, &corpus, &tokenizer, &output, lr, epochs, max_tokens,
-                &meta_out, meta_refresh,
+                seed, &meta_out, meta_refresh,
             );
         }
         Commands::Eval { model, corpus, tokenizer, modules_dir, critic, max_tokens } => {
@@ -1114,12 +1123,13 @@ impl MetricsSink {
 }
 
 fn cmd_active_ingest(
-    model_path: &PathBuf, source_paths: &[PathBuf], include_noise: bool,
+    model_path: &PathBuf, seed: u64, source_paths: &[PathBuf], include_noise: bool,
     memory_dir: &PathBuf, tokenizer_path: &Option<PathBuf>,
     critic_path: &Option<PathBuf>, confidence_head_path: &Option<PathBuf>,
     probe_tokens: usize, commit_tokens: usize, max_tokens: usize,
     metrics_out: &Option<PathBuf>, metrics_window: u64,
 ) {
+    let seed_tree = clob::util::seed::SeedTree::new(seed);
     use clob::perceive::active::{score_probe, DataSource, NoiseSource, VecSource};
 
     if source_paths.is_empty() && !include_noise {
@@ -1158,7 +1168,10 @@ fn cmd_active_ingest(
     }
     if include_noise {
         eprintln!("[active] source noise:uniform (vocab={})", model.config.vocab_size);
-        sources.push(Box::new(NoiseSource::new(model.config.vocab_size as u32)));
+        let noise_seed = seed_tree.child_seed("active_ingest_noise");
+        sources.push(Box::new(NoiseSource::new_seeded(
+            model.config.vocab_size as u32, noise_seed,
+        )));
     }
     if sources.is_empty() {
         eprintln!("[active] no usable sources, aborting");
@@ -1518,11 +1531,12 @@ fn cmd_calibrate(
 
 fn cmd_train_router(
     model_path: &PathBuf, corpus_path: &PathBuf,
-    tokenizer_path: &Option<PathBuf>,
+    tokenizer_path: &Option<PathBuf>, seed: u64,
     cf_rate: f32, baseline_decay: f32, lr: f32, weight_decay: f32,
     clip_norm: f32, batch_size: usize, max_tokens: usize,
     output: &Option<PathBuf>,
 ) {
+    let seed_tree = clob::util::seed::SeedTree::new(seed);
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[router] Loading model from {:?}", model_path);
     let mut model = io::loader::load_model(model_path).expect("failed to load");
@@ -1551,7 +1565,7 @@ fn cmd_train_router(
     let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
     eprintln!("[router] training on {} tokens", limit);
 
-    let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+    let mut rng = seed_tree.child("train_router_cf");
     let mut baseline: f64 = 0.0;
     let mut baseline_initialized = false;
     let mut n_cf = 0u64;
@@ -1675,19 +1689,21 @@ fn apply_routers_file(model: &mut CoreModel, path: &Path) -> bool {
 fn cmd_calibrate_confidence(
     model_path: &PathBuf, corpus_path: &PathBuf,
     tokenizer_path: &Option<PathBuf>, output: &PathBuf,
-    lr: f32, epochs: usize, max_tokens: usize,
+    lr: f32, epochs: usize, max_tokens: usize, seed: u64,
     meta_out: &Option<PathBuf>, meta_refresh: u64,
 ) {
+    let seed_tree = clob::util::seed::SeedTree::new(seed);
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[conf-cal] Loading model from {:?}", model_path);
     let mut model = io::loader::load_model(model_path).expect("failed to load");
     assert_vocab_compatible(&tokenizer, &model.config);
 
     let d_model = model.config.d_model;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let mut head = ConfidenceHead::random(d_model, &mut rng);
+    let mut head_rng = seed_tree.child("confidence_head_init");
+    let mut head = ConfidenceHead::random(d_model, &mut head_rng);
     let mut meta: Option<MetaCritic> = meta_out.as_ref().map(|_| {
-        MetaCritic::new(d_model, &mut rng, head.clone(), meta_refresh)
+        let mut meta_rng = seed_tree.child("meta_critic_init");
+        MetaCritic::new(d_model, &mut meta_rng, head.clone(), meta_refresh)
     });
 
     eprintln!("[conf-cal] Tokenizing {:?}", corpus_path);
