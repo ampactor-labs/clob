@@ -161,6 +161,18 @@ enum Commands {
         /// MetaCritic prediction threshold: above this, adaptive is suppressed.
         #[arg(long, default_value_t = 2.0)]
         meta_unreliable_threshold: f32,
+        /// Save a checkpoint every N tokens under --checkpoint-dir.
+        /// 0 (default) disables checkpointing.
+        #[arg(long, default_value_t = 0)]
+        checkpoint_every: u64,
+        /// Base directory for checkpoints (default: `ingest_checkpoints/`).
+        #[arg(long)]
+        checkpoint_dir: Option<PathBuf>,
+        /// Resume from a checkpoint directory. "latest" picks the highest
+        /// index under --checkpoint-dir. Fast-forwards past already-
+        /// processed tokens before streaming.
+        #[arg(long)]
+        resume_from: Option<String>,
     },
     /// Active ingest: rotate probe batches among multiple sources, score each
     /// by acquisition `max(N − C, 0) / joules_per_token`, spend the next
@@ -411,6 +423,7 @@ fn main() {
             model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens,
             metrics_out, metrics_window, confidence_head, meta_critic, routers,
             adaptive_compute, adaptive_max_extra, adaptive_z, meta_unreliable_threshold,
+            checkpoint_every, checkpoint_dir, resume_from,
         } => {
             let adaptive = AdaptiveConfig {
                 enabled: adaptive_compute,
@@ -422,6 +435,7 @@ fn main() {
                 &model, &input, &memory_dir, &tokenizer, &modules_dir, &critic,
                 max_tokens, &metrics_out, metrics_window, &confidence_head,
                 &meta_critic, &routers, adaptive,
+                checkpoint_every, &checkpoint_dir, &resume_from,
             );
         }
         Commands::ActiveIngest {
@@ -929,10 +943,43 @@ fn cmd_ingest(
     metrics_out: &Option<PathBuf>, metrics_window: u64,
     confidence_head_path: &Option<PathBuf>, meta_critic_path: &Option<PathBuf>,
     routers_path: &Option<PathBuf>, adaptive: AdaptiveConfig,
+    checkpoint_every: u64, checkpoint_dir: &Option<PathBuf>,
+    resume_from: &Option<String>,
 ) {
+    use clob::io::checkpoint;
+    let ckpt_base = checkpoint_dir.clone()
+        .unwrap_or_else(|| PathBuf::from("ingest_checkpoints"));
+    let mut resumed_tokens: u64 = 0;
+    let mut ckpt_index: u64 = 1;
+    let mut effective_model_path: Option<PathBuf> = None;
+    if let Some(spec) = resume_from.as_ref() {
+        match checkpoint::resolve_resume(&ckpt_base, spec)
+            .and_then(|d| checkpoint::load_handles(&d))
+        {
+            Ok(handles) => {
+                resumed_tokens = handles.progress.tokens_processed;
+                // Resume from the next checkpoint index so we don't collide.
+                if let Some(name) = handles.dir.file_name().and_then(|n| n.to_str()) {
+                    if let Some(n) = name.strip_prefix("checkpoint_").and_then(|s| s.parse::<u64>().ok()) {
+                        ckpt_index = n + 1;
+                    }
+                }
+                effective_model_path = Some(handles.model.clone());
+                eprintln!(
+                    "[ingest] resuming from {:?}: skipping {} already-processed tokens",
+                    handles.dir, resumed_tokens,
+                );
+            }
+            Err(e) => {
+                eprintln!("[ingest] --resume-from failed: {}", e);
+                std::process::exit(2);
+            }
+        }
+    }
     let tokenizer = load_tokenizer(tokenizer_path);
-    eprintln!("[ingest] Loading model from {:?}", model_path);
-    let mut model = io::loader::load_model(model_path).expect("failed to load");
+    let load_path = effective_model_path.as_ref().unwrap_or(model_path);
+    eprintln!("[ingest] Loading model from {:?}", load_path);
+    let mut model = io::loader::load_model(load_path).expect("failed to load");
     assert_vocab_compatible(&tokenizer, &model.config);
 
     if let Some(p) = critic_path.as_ref() {
@@ -987,9 +1034,17 @@ fn cmd_ingest(
     let start = Instant::now();
 
     // Stream through decode_step one token at a time. Predict token[i+1] from state after token[i].
+    // When resuming, skip the first `resumed_tokens` positions — we already
+    // processed them in a prior run. The model state is restored from the
+    // checkpoint's model file, so the SSM state matches where we left off
+    // as far as the saved weights represent it.
     model.reset_state();
     let mut last_tick = Instant::now();
-    for i in 0..limit.saturating_sub(1) {
+    let start_i = resumed_tokens as usize;
+    if start_i > 0 {
+        eprintln!("[ingest] fast-forwarding past {} already-processed tokens", start_i);
+    }
+    for i in start_i..limit.saturating_sub(1) {
         let step_start = last_tick;
         let logits = model.decode_step(tokens[i]);
         let actual = tokens[i + 1];
@@ -1049,6 +1104,30 @@ fn cmd_ingest(
             sink.maybe_flush();
         } else {
             last_tick = Instant::now();
+        }
+
+        // Checkpoint: every checkpoint_every tokens processed in this run,
+        // snapshot the model + progress marker.
+        if checkpoint_every > 0 {
+            let processed_this_run = (i - start_i + 1) as u64;
+            if processed_this_run % checkpoint_every == 0 {
+                let mut progress = clob::io::checkpoint::CheckpointProgress::new(
+                    "ingest", 0,
+                );
+                progress.tokens_processed = (i + 1) as u64;
+                let manifest = clob::config::manifest::RunManifest::new("ingest")
+                    .with_input("corpus", input_path);
+                match clob::io::checkpoint::save(
+                    &ckpt_base, ckpt_index, &model,
+                    None, None, None, &progress, &manifest,
+                ) {
+                    Ok(dir) => {
+                        eprintln!("[ingest] checkpoint {:?} (tokens={})", dir, i + 1);
+                        ckpt_index += 1;
+                    }
+                    Err(e) => eprintln!("[ingest] checkpoint save failed: {}", e),
+                }
+            }
         }
     }
     if let Some(sink) = metrics.as_mut() {

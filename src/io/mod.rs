@@ -5,3 +5,4 @@ pub mod mmap;
 pub mod loader;
 pub mod synth;
 pub mod writer;
+pub mod checkpoint;
