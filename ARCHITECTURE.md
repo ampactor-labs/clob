@@ -744,3 +744,42 @@ would have saved it.
 ---
 
 *Written on a T490, for a T490.*
+
+---
+
+## Current status (2026-04-20, Phase I)
+
+This section is maintained as Part V's bets accumulate evidence. Each bet's
+status is either "untested" (infrastructure not in place), "instrumented"
+(the gate exists and can fire, but hasn't been exercised on real data),
+or a measured signal.
+
+- **Bet 1: Ternary + SSM retains useful capability.** Untested. The
+  first real run (Phase N + Phase L corpus) is where this gets measured
+  against a matched f32 baseline.
+- **Bet 2: Crystallization produces net predictive gain.** Instrumented.
+  Phase K's `bench-suite` is the A/B harness; Phase L's diagnostic
+  corpus with planted structural patterns will be the first test.
+- **Bet 3: Forget without regression.** Instrumented. The ring buffer
+  marks consumed episodes; a delay-and-measure test is a follow-on
+  in Phase K.
+- **Bet 4: Compiled modules beat generic matmul.** Untested — the
+  compiled path is a demo today, not on the hot path. Phase Q wires
+  it; Phase O vectorizes it.
+- **Bet 5: Self-improvement converges.** Untested. Requires long-running
+  training with Phase J's checkpoints — not yet run.
+
+**What is measurable today:**
+
+- Byte-reproducible artifacts given `--seed` (Phase G verified this for
+  synth, calibrate-confidence, and train-router).
+- Adaptive decode fires at the expected rate and meta suppression
+  saves ~13% of extra steps without hurting CE (Phase B+C + F verified
+  on the smoke corpus).
+- DSL synthesis recovers planted patterns under depth-4 BFS (Phase E).
+- Active selection prefers structured sources over uniform noise even
+  when N/C scores tie at zero (Phase D).
+
+The manifesto said "falsifiable bets, with observables." The observables
+now exist. The data that would move any bet from "untested" to
+"confirmed" or "falsified" is the next thing.
