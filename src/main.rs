@@ -213,6 +213,46 @@ enum Commands {
         #[arg(long, default_value_t = 500)]
         metrics_window: u64,
     },
+    /// Run the full ablation bench-suite across {adaptive on/off} ×
+    /// {modules present/absent} × {routers pristine/trained} × seeds and
+    /// emit a TSV summary. The first real signal that B+C+F earn their
+    /// keep on real data.
+    BenchSuite {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        eval_corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Seeds to evaluate. One row per (seed, axis-combo).
+        #[arg(long, value_delimiter = ',', default_values_t = [1u64])]
+        seeds: Vec<u64>,
+        #[arg(long)]
+        critic: Option<PathBuf>,
+        #[arg(long)]
+        confidence_head: Option<PathBuf>,
+        #[arg(long)]
+        meta_critic: Option<PathBuf>,
+        /// Trained-router side-files to pair with the pristine router. Each
+        /// path contributes one cell per {adaptive, modules} combination.
+        #[arg(long, value_delimiter = ',')]
+        routers_trained: Vec<PathBuf>,
+        /// Directories of crystal modules to pair with the no-module cell.
+        #[arg(long, value_delimiter = ',')]
+        modules_dirs: Vec<PathBuf>,
+        /// Tokens per cell's eval pass.
+        #[arg(long, default_value_t = 1500)]
+        max_tokens: usize,
+        /// Adaptive iteration budget when adaptive=on.
+        #[arg(long, default_value_t = 2)]
+        adaptive_max_extra: u8,
+        /// Adaptive z-threshold when adaptive=on.
+        #[arg(long, default_value_t = 1.0)]
+        adaptive_z: f32,
+        /// Output TSV file.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Tail a metrics jsonl file and print the dashboard (J/nat, tokens/sec,
     /// CE, deltas vs. the first window).
     Metrics {
@@ -451,6 +491,18 @@ fn main() {
         }
         Commands::Metrics { path, tail } => {
             cmd_metrics(&path, tail);
+        }
+        Commands::BenchSuite {
+            model, eval_corpus, tokenizer, seeds, critic, confidence_head,
+            meta_critic, routers_trained, modules_dirs, max_tokens,
+            adaptive_max_extra, adaptive_z, out,
+        } => {
+            cmd_bench_suite(
+                &model, &eval_corpus, &tokenizer, &seeds,
+                &critic, &confidence_head, &meta_critic,
+                &routers_trained, &modules_dirs,
+                max_tokens, adaptive_max_extra, adaptive_z, &out,
+            );
         }
         Commands::TrainRouter {
             model, corpus, tokenizer, seed, cf_rate, baseline_decay, lr, weight_decay,
@@ -1436,6 +1488,85 @@ fn cmd_active_ingest(
     for (id, n) in &by_source {
         let pct = if total_commit > 0 { *n as f64 / total_commit as f64 * 100.0 } else { 0.0 };
         eprintln!("  {}: {} tokens ({:.1}%)", id, n, pct);
+    }
+}
+
+fn cmd_bench_suite(
+    model_path: &PathBuf, eval_corpus: &PathBuf,
+    tokenizer_path: &Option<PathBuf>, seeds: &[u64],
+    critic_path: &Option<PathBuf>, confidence_head_path: &Option<PathBuf>,
+    meta_critic_path: &Option<PathBuf>,
+    routers_trained: &[PathBuf], modules_dirs: &[PathBuf],
+    max_tokens: usize, adaptive_max_extra: u8, adaptive_z: f32,
+    out: &PathBuf,
+) {
+    use clob::eval::bench_suite::{self, BenchInputs, BenchMatrix};
+
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[bench-suite] Loading model from {:?}", model_path);
+    let model_for_vocab = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model_for_vocab.config);
+    drop(model_for_vocab); // each cell loads fresh.
+
+    let text = std::fs::read_to_string(eval_corpus).expect("failed to read eval corpus");
+    let holdout_tokens = tokenizer.encode(&text);
+    eprintln!("[bench-suite] Holdout tokens: {}", holdout_tokens.len());
+
+    let critic = critic_path.as_ref().map(|p| {
+        let b = std::fs::read(p).expect("read critic");
+        EnergyCritic::from_bytes(&b).expect("parse critic")
+    });
+    let confidence_head = confidence_head_path.as_ref().map(|p| {
+        let b = std::fs::read(p).expect("read confidence head");
+        ConfidenceHead::from_bytes(&b).expect("parse confidence head")
+    });
+    let meta_critic = meta_critic_path.as_ref().map(|p| {
+        let b = std::fs::read(p).expect("read meta critic");
+        MetaCritic::from_bytes(&b).expect("parse meta critic")
+    });
+
+    let module_axis = bench_suite::cartesian_option_paths(modules_dirs);
+    let routers_axis = bench_suite::cartesian_option_paths(routers_trained);
+
+    let matrix = BenchMatrix {
+        seeds: seeds.to_vec(),
+        adaptive: vec![false, true],
+        modules_dir: module_axis,
+        routers_path: routers_axis,
+        max_tokens,
+        adaptive_max_extra,
+        adaptive_z,
+    };
+
+    let inputs = BenchInputs {
+        model_path,
+        tokenizer: &tokenizer,
+        holdout_tokens: &holdout_tokens,
+        critic: critic.as_ref(),
+        confidence_head: confidence_head.as_ref(),
+        meta_critic: meta_critic.as_ref(),
+    };
+
+    eprintln!("[bench-suite] Running {} cells", matrix.seeds.len()
+        * matrix.adaptive.len() * matrix.modules_dir.len() * matrix.routers_path.len());
+    let cells = bench_suite::run_matrix(&matrix, &inputs).expect("bench matrix failed");
+    bench_suite::emit_tsv(&cells, out).expect("emit tsv");
+    eprintln!("[bench-suite] Wrote {} cells to {:?}", cells.len(), out);
+    eprintln!("\n[bench-suite] Summary (axis-pivot):\n{}",
+        bench_suite::summarize_by_axis(&cells));
+
+    // Sidecar manifest for the TSV.
+    let mut manifest = clob::config::manifest::RunManifest::new("bench-suite")
+        .with_input("model", model_path)
+        .with_input("eval_corpus", eval_corpus);
+    if let Some(p) = confidence_head_path.as_ref() {
+        manifest = manifest.with_input("confidence_head", p);
+    }
+    if let Some(p) = meta_critic_path.as_ref() {
+        manifest = manifest.with_input("meta_critic", p);
+    }
+    if let Err(e) = manifest.save_sidecar(out) {
+        eprintln!("[bench-suite] manifest write failed: {}", e);
     }
 }
 

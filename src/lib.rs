@@ -26,3 +26,4 @@ pub mod net;
 pub mod metrics;
 pub mod util;
 pub mod config;
+pub mod eval;
