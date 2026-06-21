@@ -18,11 +18,16 @@ compiled ternary modules and discards the raw episodes once compressed.
 See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 "unsurpassable" rhetoric of earlier drafts).
 
-## State as of this document's creation
+## State (updated 2026-06-21 — Phases G–K shipped, pre-first-real-run)
 
-**Branch:** `main`, 6 commits ahead of `origin/main` (not pushed).
+**Branch:** `main`, 12 commits ahead of `origin/main` (not pushed).
 
-**Commit history (most recent last relevant first):**
+**Commit history (most recent first):**
+- `88827f4` — Phase K: bench-suite ablation harness (trajectory.rs deferred to L)
+- `c280808` — Phase J: checkpoint + resume for ingest
+- `41f1142` — Phase I: docs layer — README, runbook, subsystem deep dives, CLAUDE.md
+- `615e139` — Phase H: manifests + experiments convention
+- `6f4988b` — Phase G: model save path + SeedTree for reproducibility
 - `8369dd3` — Phase E: symbolic crystallization (DSL synthesis, hint-only)
 - `b8c23fd` — Phase F (2/2): router crystallization via REINFORCE
 - `f7388a9` — Phase F (1/2): MetaCritic with target-network
@@ -32,10 +37,18 @@ See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 - `827c890` — (pre-supercharge) Sharpened ARCHITECTURE.md + fixed distill MDL math
 - `b848eed` — (pre-supercharge) Phase 4: trained energy critic, fixed novelty
 
-**Test suite:** 37 tests pass (`cargo test --release`). Includes unit
+**Test suite:** 57 tests pass (`cargo test --release`). Includes unit
 tests for distill/MDL, router policy gradient, meta-critic target-network
 refresh, symbolic-synth planted-pattern recovery, active selection
-acquisition score, metrics window serialization, and more.
+acquisition score, metrics window serialization, byte-identical model
+save (Phase G), manifest round-trip (Phase H), checkpoint resume
+(Phase J), bench-suite summarization (Phase K), and more.
+
+**Tier 1 phase status:** G ✓ · H ✓ · I ✓ · J ✓ · K ✓ (shipped) —
+L · M · N (pending). The next gate is **Phase L (real data)**: until a
+real corpus runs, every metric (J/nat ≈ 0.006, mean_nll ≈ 7.0) is
+uninformative by construction, and all five falsifiable bets in
+`ARCHITECTURE.md` Part V remain untested/instrumented.
 
 **End-to-end pipeline verified** on synthetic weights against
 `tests/data/eval_corpus.txt` (1.5 KB smoke corpus):
@@ -71,7 +84,7 @@ In rough order:
 # 1. Smoke-build
 cargo build --release
 
-# 2. Smoke-test (must show "37 passed")
+# 2. Smoke-test (must show "57 passed")
 cargo test --release 2>&1 | grep "test result"
 
 # 3. End-to-end pipeline (takes ~1 min)
@@ -95,18 +108,23 @@ cd /tmp && rm -rf clob_verify && mkdir clob_verify && cd clob_verify
 Expected: clean run, 3 windows of metrics, J/nat ≈ 0.006, mean_nll ≈ 7.0,
 some counterfactuals and some meta-suppressions.
 
-## Known gaps heading into Tier 1 execution
+## Known gaps remaining (post-K)
 
-See **Guiding principles** and **Phase G** below. Short list:
-- No full-model save path (only side-files round-trip).
-- Seeds are hardcoded across `main.rs` (`42`, `7`, `11`, `13`, etc.)
-  and `thread_rng` is used for `random()` in some places.
+Phases G–K closed the original blockers: the model-save path, top-level
+seed threading (no `thread_rng` in production paths), config manifests,
+checkpoint/resume, and the bench-suite harness all exist now. Still open:
 - `tests/data/eval_corpus.txt` is 1.5 KB — smoke only, no held-out
-  discipline, no train/eval split.
-- No checkpoint/resume machinery.
-- No bench-suite harness; ablations are manual.
-- Scalar x86 emitter (AVX2 is aspiration, not measurement).
-- `eprintln!` everywhere; no leveled logging.
+  discipline, no train/eval split, no real corpus. **→ Phase L (next).**
+- Scalar x86 emitter (`addss`/`subss` per trit); AVX2 is aspiration,
+  not measurement. **→ Phase O.**
+- `eprintln!` everywhere (171 calls, 158 in `main.rs`); no leveled
+  logging, no CI. **→ Phase M.**
+- Symbolic crystallization is hint-only metadata; `Program::apply` is
+  implemented but unwired — not on the inference hot path. **→ Phase Q.**
+- MoE routers stay dense f32 after REINFORCE training; not
+  re-ternarized into the same compression regime as experts. **→ Phase R.**
+- All five falsifiable bets remain untested/instrumented — there is no
+  real-data signal yet. **Unblocked by Phase L.**
 
 ## Global conventions
 
@@ -361,6 +379,15 @@ should match today because modules are empty). Trajectories from
 `calibrate-confidence` show the head's MSE monotonically decreasing per
 step window.
 
+**Shipped (commit `88827f4`):** `src/eval/bench_suite.rs` + the `clob
+bench-suite` subcommand — the matrix over {adaptive}×{modules}×{router}×
+{seeds} emitting `bench_suite.tsv` with a `summarize_by_axis` pivot.
+**Deferred to Phase L:** `src/eval/trajectory.rs`, the `clob traj`
+diagnostic subcommand, and the `--trajectory-out` modifications to
+`calibrate-confidence` / `train-router`. These were cut from K for diff
+hygiene and now ride with the real-data work (trajectories are only
+diagnostic once a real corpus produces a non-flat NLL curve).
+
 ### Phase L — Real data: acquisition, tokenization, split enforcement
 
 Up to now every verification has used the 1.5 KB smoke corpus. This
@@ -387,6 +414,11 @@ phase replaces it with pinned, reproducible artifacts.
 - `src/util/split_check.rs` — sentence-level hash check: no train
   sentence may appear in holdout. `tests/data_split.rs` enforces this
   in CI.
+- `src/eval/trajectory.rs` + `clob traj` (**rolled over from Phase K**):
+  per-training-step jsonl writer for head MSE, router update norms, and
+  Pearson against NLL, rendered as a text plot. `calibrate-confidence`
+  and `train-router` gain `--trajectory-out`. Now diagnostic because the
+  real corpus produces a non-flat learning curve.
 
 **Modify:**
 - `cmd_ingest` accepts tokenized input when the path ends in `.tokens`,
