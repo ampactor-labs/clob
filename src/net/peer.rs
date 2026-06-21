@@ -23,7 +23,12 @@ pub struct Peer {
 }
 
 impl Peer {
-    pub fn connect(addr: SocketAddr, my_kernel_id: u64, my_n_modules: usize) -> std::io::Result<Self> {
+    pub fn connect(
+        addr: SocketAddr,
+        my_kernel_id: u64,
+        my_config_hash: u64,
+        my_n_modules: usize,
+    ) -> std::io::Result<Self> {
         let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
         stream.set_nodelay(true)?;
 
@@ -37,18 +42,27 @@ impl Peer {
             last_seen: Instant::now(),
         };
 
-        // Send hello
+        // Send hello, advertising our architecture fingerprint so the peer can
+        // tell whether our modules are shape-compatible with theirs.
         let hello = Message::Hello {
             version: protocol::PROTOCOL_VERSION,
             kernel_id: my_kernel_id,
-            config_hash: 0, // TODO: compute from config
+            config_hash: my_config_hash,
             n_modules: my_n_modules,
         };
         peer.send(&hello)?;
 
-        // Receive hello back
-        if let Ok(Message::Hello { kernel_id, .. }) = peer.recv() {
+        // Receive hello back. A differing config_hash means modules from this
+        // peer were grown by a differently-shaped kernel — surface it loudly
+        // rather than silently accepting incompatible weights later.
+        if let Ok(Message::Hello { kernel_id, config_hash, .. }) = peer.recv() {
             peer.kernel_id = kernel_id;
+            if config_hash != my_config_hash {
+                eprintln!(
+                    "[net] WARN: peer #{kernel_id} config_hash {config_hash:#018x} differs \
+                     from ours {my_config_hash:#018x}; modules may be incompatible",
+                );
+            }
         }
 
         Ok(peer)
@@ -105,7 +119,7 @@ impl PeerRegistry {
             .filter(|(_, p)| p.is_alive())
             .map(|(&id, p)| (id, p.trust))
             .collect();
-        ids.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        ids.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         ids.into_iter().map(|(id, _)| id).collect()
     }
 }

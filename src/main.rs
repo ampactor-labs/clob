@@ -444,6 +444,10 @@ enum NetAction {
     Connect {
         #[arg(long)]
         addr: String,
+        /// Model whose config fingerprints this kernel in the handshake.
+        /// Without it the handshake is anonymous (id/hash = 0).
+        #[arg(long)]
+        model: Option<PathBuf>,
     },
 }
 
@@ -562,7 +566,7 @@ fn main() {
         Commands::Net { action } => {
             match action {
                 NetAction::Discover { timeout_ms } => cmd_net_discover(timeout_ms),
-                NetAction::Connect { addr } => cmd_net_connect(&addr),
+                NetAction::Connect { addr, model } => cmd_net_connect(&addr, &model),
             }
         }
     }
@@ -1009,7 +1013,8 @@ fn cmd_encode(input_path: &PathBuf, output: &PathBuf, tokenizer_path: &Option<Pa
     eprintln!("[encode] Reading corpus from {:?}", input_path);
     let text = std::fs::read_to_string(input_path).expect("failed to read corpus");
     let tokens = tokenizer.encode(&text);
-    clob::token::tokens_file::save_tokens(output, &tokens).expect("failed to write .tokens");
+    clob::token::tokens_file::save_tokens(output, &tokens, tokenizer.vocab_size() as u32)
+        .expect("failed to write .tokens");
     let bytes = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
     eprintln!(
         "[encode] {} chars -> {} tokens -> {:?} ({:.1} KB, {:.2} chars/token)",
@@ -1021,11 +1026,26 @@ fn cmd_encode(input_path: &PathBuf, output: &PathBuf, tokenizer_path: &Option<Pa
 
 /// Load a token stream for the runtime: a pre-encoded `.tokens` cache when
 /// `input_path` ends in `.tokens` (Phase L — skips BPE entirely), otherwise
-/// read the file as text and tokenize it on the fly.
-fn load_or_encode_tokens(input_path: &PathBuf, tokenizer: &BpeTokenizer) -> Vec<u32> {
+/// read the file as text and tokenize it on the fly. For a cache, the stamped
+/// vocab is checked against the model so ids that can't index the model fail
+/// loudly rather than reading past the embedding table.
+fn load_or_encode_tokens(
+    input_path: &PathBuf,
+    tokenizer: &BpeTokenizer,
+    config: &KernelConfig,
+) -> Vec<u32> {
     if input_path.extension().and_then(|e| e.to_str()) == Some("tokens") {
         eprintln!("[ingest] Loading pre-encoded tokens from {:?}", input_path);
-        clob::token::tokens_file::load_tokens(input_path).expect("failed to read .tokens")
+        let tf = clob::token::tokens_file::load_tokens(input_path).expect("failed to read .tokens");
+        if tf.vocab_size as usize > config.vocab_size {
+            eprintln!(
+                "[error] .tokens was encoded with vocab {} but model vocab is {}. \
+                 Re-encode against a tokenizer/model that match.",
+                tf.vocab_size, config.vocab_size,
+            );
+            std::process::exit(2);
+        }
+        tf.tokens
     } else {
         eprintln!("[ingest] Tokenizing {:?}", input_path);
         let text = std::fs::read_to_string(input_path).expect("failed to read corpus");
@@ -1118,7 +1138,7 @@ fn cmd_ingest(
     };
     let mut meter = clob::metrics::TdpProxyMeter::t490();
 
-    let tokens = load_or_encode_tokens(input_path, &tokenizer);
+    let tokens = load_or_encode_tokens(input_path, &tokenizer, &model.config);
     let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
     eprintln!("[ingest] Streaming {} tokens (of {} total)", limit, tokens.len());
 
@@ -2207,11 +2227,27 @@ fn cmd_net_discover(timeout_ms: u64) {
     }
 }
 
-fn cmd_net_connect(addr: &str) {
+fn cmd_net_connect(addr: &str, model: &Option<PathBuf>) {
     eprintln!("[net] Connecting to {}...", addr);
+    // Identify this kernel by its config fingerprint when a model is given, so
+    // the peer can detect shape-incompatible module exchange. Anonymous (0/0)
+    // otherwise — this is a connectivity check, not a module-exchange session.
+    let (kernel_id, config_hash) = match model {
+        Some(p) => match io::loader::load_model(p) {
+            Ok(m) => {
+                let h = m.config.config_hash();
+                (h, h)
+            }
+            Err(e) => {
+                eprintln!("[net] failed to load --model {:?}: {} — connecting anonymously", p, e);
+                (0, 0)
+            }
+        },
+        None => (0, 0),
+    };
     match addr.parse::<std::net::SocketAddr>() {
         Ok(socket_addr) => {
-            match clob::net::peer::Peer::connect(socket_addr, 0, 0) {
+            match clob::net::peer::Peer::connect(socket_addr, kernel_id, config_hash, 0) {
                 Ok(peer) => {
                     eprintln!("[net] Connected to kernel #{}", peer.kernel_id);
                 }
