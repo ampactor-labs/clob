@@ -676,6 +676,34 @@ aimless drift.
 How it could break: the obvious way — the system gets worse, or cycles.
 Observable: long-running held-out evaluation at fixed intervals.
 
+### Falsification thresholds (pre-registered)
+
+The bets above are directional — "a small constant factor", "fast enough".
+Before the first real run they get *numbers*, pinned here so a result can
+fail rather than be reinterpreted after the fact. These are **pre-registered**:
+lock them before Phase L, and do not move them after seeing a result. If a
+threshold turns out to be wrong, change it in a commit that does *not* also
+report the run it judges.
+
+| Bet | Metric | Pass | Kill |
+|:--|:--|:--|:--|
+| 1 | held-out CE vs matched f32 baseline | gap ≤ 1.25× | gap > 1.5× |
+| 1 | resident weight memory vs f32 | ≥ 10× smaller | < 8× smaller |
+| 2 | held-out NLL, modules-loaded vs cleared, **equal compute** | ≥ 2% lower | not lower (≤ 0%) |
+| 2 | drift on untouched inputs after integration | ≤ 0.5% worse | > 1% worse |
+| 3 | held-out accuracy on a pattern after its episodes are released | within 1% of retained | > 2% drop |
+| 4 | compiled-module wall-clock vs generic ternary kernel, amortized by activation count | ≥ 2× faster | < 1× (slower) |
+| 5 | held-out quality over a long horizon at fixed-interval checkpoints | non-decreasing (≤ 1% dips) | sustained decline or oscillation |
+
+"Equal compute" for Bet 2 means the same number of decode passes per token in
+both arms, so any gain is the modules' doing, not extra iteration. The Phase L
+diagnostic corpus (`data/synthetic/diagnostic.txt`) is the first place Bets 2
+and 3 are checkable against *known* planted structure; the real corpus is where
+Bet 1 meets a matched f32 baseline.
+
+These numbers are a first pass — defensible, not sacred. The discipline that
+matters is that they are fixed *before* the run, not the exact values.
+
 ### What the design does *not* claim
 
 - It does not claim to be Kolmogorov-optimal. It claims a mechanism that
@@ -782,4 +810,6 @@ or a measured signal.
 
 The manifesto said "falsifiable bets, with observables." The observables
 now exist. The data that would move any bet from "untested" to
-"confirmed" or "falsified" is the next thing.
+"confirmed" or "falsified" is the next thing. The thresholds that decide
+*which way* each one moves are pre-registered in Part V (*Falsification
+thresholds*) — fixed before the run, not after.

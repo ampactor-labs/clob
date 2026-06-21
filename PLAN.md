@@ -203,6 +203,14 @@ imagination, introspection, hardware autotuning, and self-documentation.
 - **Tier discipline.** Land Tier 1 before Tier 2. Tier 2 before Tier 3.
   Tier 3 before Tier 4. Shortcuts across tiers produce unmaintainable
   systems that look ambitious and behave brittle.
+- **Signal before polish.** *Within* Tier 1, the first real-corpus signal
+  outranks code-quality polish. As soon as Phase L lands a corpus, do an
+  exploratory real-data run — even ad-hoc, before Phase N's polished
+  `first_run.sh` — and defer Phase M (logging, CI, the eprintln sweep)
+  until after. M is deferrable; not knowing whether the core bet holds is
+  not. A green logger on a model that has never seen real data proves
+  nothing. (Run the planted-pattern `scripts/diagnostic_run.sh` first of
+  all — it has known answers in `data/synthetic/expected.md`.)
 
 ## Tier 1 — Readiness (Phases G–N)
 
