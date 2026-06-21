@@ -1,0 +1,55 @@
+SECTION 1 PERIODIC PHRASE
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code
+
+SECTION 2 SHIFT RULE
+a b c d e f g h
+b c d e f g h i
+c d e f g h i j
+d e f g h i j k
+e f g h i j k l
+f g h i j k l m
+g h i j k l m n
+h i j k l m n o
+i j k l m n o p
+j k l m n o p q
+k l m n o p q r
+l m n o p q r s
+
+SECTION 3 PERIOD TWO ALTERNATION
+up down up down up down up down
+plus minus plus minus plus minus plus minus
+on off on off on off on off
+up down up down up down up down
+plus minus plus minus plus minus plus minus
+on off on off on off on off
+up down up down up down up down
+plus minus plus minus plus minus plus minus
+
+SECTION 4 HIGH ENTROPY NOISE
+qx zth wmk vbp fjr nlc dgy oah use izt
+plm xqv brk wnf jyd ctg ahs ozu eik rmp
+vng tqx cwl pbd zhr fjs okm aey nud git
+wrc qpl xzv mnb fhg jdt aks oey uir ztp
+brk qxn vlm dfh wpc zjt agy oks eun ird
+xtp mqv cnb wlf zdr hjs aky oeg uit pnr
+
+SECTION 5 STRUCTURE INTERLEAVED WITH NOISE
+the ternary kernel compiles experience into code qx zth wmk
+plm xqv brk the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code vng tqx cwl
+wrc qpl xzv the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code brk qxn vlm
+xtp mqv cnb the ternary kernel compiles experience into code
+the ternary kernel compiles experience into code zhr fjs okm
+ahs ozu eik the ternary kernel compiles experience into code

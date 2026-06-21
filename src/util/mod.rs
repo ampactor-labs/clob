@@ -4,3 +4,4 @@
 
 pub mod seed;
 pub mod sha;
+pub mod split_check;

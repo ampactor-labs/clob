@@ -108,6 +108,19 @@ enum Commands {
         #[arg(long, default_value_t = 4000)]
         n_merges: usize,
     },
+    /// Encode a text corpus into a cached `.tokens` array (skips BPE on every
+    /// later run; consumed by `ingest` when --input ends in `.tokens`).
+    Encode {
+        /// Input text corpus.
+        #[arg(long)]
+        input: PathBuf,
+        /// Output `.tokens` file.
+        #[arg(long)]
+        output: PathBuf,
+        /// Tokenizer file (BPE). If missing, uses byte-level.
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+    },
     /// Process a file through the kernel (non-interactive).
     /// Streams tokens; records true prediction errors for each next-token prediction.
     Ingest {
@@ -458,6 +471,9 @@ fn main() {
         }
         Commands::TrainTokenizer { corpus, output, n_merges } => {
             cmd_train_tokenizer(&corpus, &output, n_merges);
+        }
+        Commands::Encode { input, output, tokenizer } => {
+            cmd_encode(&input, &output, &tokenizer);
         }
         Commands::Ingest {
             model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens,
@@ -988,6 +1004,35 @@ fn cmd_train_tokenizer(corpus_path: &PathBuf, output: &PathBuf, n_merges: usize)
     eprintln!("[bpe] Roundtrip: ✓");
 }
 
+fn cmd_encode(input_path: &PathBuf, output: &PathBuf, tokenizer_path: &Option<PathBuf>) {
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[encode] Reading corpus from {:?}", input_path);
+    let text = std::fs::read_to_string(input_path).expect("failed to read corpus");
+    let tokens = tokenizer.encode(&text);
+    clob::token::tokens_file::save_tokens(output, &tokens).expect("failed to write .tokens");
+    let bytes = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    eprintln!(
+        "[encode] {} chars -> {} tokens -> {:?} ({:.1} KB, {:.2} chars/token)",
+        text.len(), tokens.len(), output,
+        bytes as f64 / 1024.0,
+        text.len() as f64 / tokens.len().max(1) as f64,
+    );
+}
+
+/// Load a token stream for the runtime: a pre-encoded `.tokens` cache when
+/// `input_path` ends in `.tokens` (Phase L — skips BPE entirely), otherwise
+/// read the file as text and tokenize it on the fly.
+fn load_or_encode_tokens(input_path: &PathBuf, tokenizer: &BpeTokenizer) -> Vec<u32> {
+    if input_path.extension().and_then(|e| e.to_str()) == Some("tokens") {
+        eprintln!("[ingest] Loading pre-encoded tokens from {:?}", input_path);
+        clob::token::tokens_file::load_tokens(input_path).expect("failed to read .tokens")
+    } else {
+        eprintln!("[ingest] Tokenizing {:?}", input_path);
+        let text = std::fs::read_to_string(input_path).expect("failed to read corpus");
+        tokenizer.encode(&text)
+    }
+}
+
 fn cmd_ingest(
     model_path: &PathBuf, input_path: &PathBuf, memory_dir: &PathBuf,
     tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
@@ -1073,9 +1118,7 @@ fn cmd_ingest(
     };
     let mut meter = clob::metrics::TdpProxyMeter::t490();
 
-    eprintln!("[ingest] Tokenizing {:?}", input_path);
-    let text = std::fs::read_to_string(input_path).expect("failed to read corpus");
-    let tokens = tokenizer.encode(&text);
+    let tokens = load_or_encode_tokens(input_path, &tokenizer);
     let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
     eprintln!("[ingest] Streaming {} tokens (of {} total)", limit, tokens.len());
 

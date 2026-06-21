@@ -1,0 +1,10 @@
+# Downloaded / derived corpus artifacts are reproducible via
+# scripts/acquire_corpus.sh + scripts/tokenize_corpus.sh — not committed.
+*.txt
+*.tokens
+*.bin
+.raw_*
+
+# Keep provenance + the pinned checksums (these travel with the repo).
+!README.md
+!*.sha256
