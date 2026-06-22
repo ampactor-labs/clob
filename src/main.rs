@@ -291,6 +291,10 @@ enum Commands {
         /// Load a trained energy critic side-file before evaluating.
         #[arg(long)]
         critic: Option<PathBuf>,
+        /// Install a trained untied readout sidecar (replaces the tied
+        /// unembedding). Produced by `probe-readout --save-readout`.
+        #[arg(long)]
+        readout: Option<PathBuf>,
         /// Cap on tokens to evaluate (0 = unlimited).
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
@@ -404,6 +408,10 @@ enum Commands {
         /// Optional JSON report path (a sidecar manifest is written beside it).
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Persist the best-fitted readout as an installable sidecar (use with
+        /// `ingest`/`eval` via `--readout`). Standardization is folded in.
+        #[arg(long)]
+        save_readout: Option<PathBuf>,
     },
     /// Train the energy critic online: stream a corpus, SGD the critic on
     /// MSE against per-step NLL, save it to a side file. No episode storage,
@@ -582,15 +590,15 @@ fn main() {
         }
         Commands::ProbeReadout {
             model, train, holdout, tokenizer, max_tokens, epochs, batch_size,
-            lr, weight_decays, seed, out,
+            lr, weight_decays, seed, out, save_readout,
         } => {
             cmd_probe_readout(
                 &model, &train, &holdout, &tokenizer, max_tokens, epochs,
-                batch_size, lr, &weight_decays, seed, &out,
+                batch_size, lr, &weight_decays, seed, &out, &save_readout,
             );
         }
-        Commands::Eval { model, corpus, tokenizer, modules_dir, critic, max_tokens } => {
-            cmd_eval(&model, &corpus, &tokenizer, &modules_dir, &critic, max_tokens);
+        Commands::Eval { model, corpus, tokenizer, modules_dir, critic, readout, max_tokens } => {
+            cmd_eval(&model, &corpus, &tokenizer, &modules_dir, &critic, &readout, max_tokens);
         }
         Commands::Calibrate { model, corpus, tokenizer, output, lr, epochs, max_tokens } => {
             cmd_calibrate(&model, &corpus, &tokenizer, &output, lr, epochs, max_tokens);
@@ -760,6 +768,33 @@ fn apply_confidence_head_file(model: &mut CoreModel, path: &Path) -> bool {
     eprintln!("[conf] loaded {:?} (dim={}, n_trained={}, mse={:.4})",
         path, head.dim(), head.n_trained(), head.train_mse());
     model.set_confidence_head(head);
+    true
+}
+
+fn apply_readout_file(model: &mut CoreModel, path: &Path) -> bool {
+    use clob::nn::readout::TrainedReadout;
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[readout] {:?}: {}", path, e);
+            return false;
+        }
+    };
+    let readout = match TrainedReadout::from_bytes(&bytes) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[readout] parse {:?}: {}", path, e);
+            return false;
+        }
+    };
+    if readout.d_model() != model.config.d_model || readout.vocab_size() != model.config.vocab_size {
+        eprintln!("[readout] shape {}×{} != model {}×{}; refusing to install",
+            readout.vocab_size(), readout.d_model(), model.config.vocab_size, model.config.d_model);
+        std::process::exit(2);
+    }
+    eprintln!("[readout] installed untied output head from {:?} ({}×{})",
+        path, readout.vocab_size(), readout.d_model());
+    model.set_readout(readout);
     true
 }
 
@@ -1727,7 +1762,7 @@ fn cmd_metrics(path: &PathBuf, tail: usize) {
 fn cmd_eval(
     model_path: &PathBuf, corpus_path: &PathBuf,
     tokenizer_path: &Option<PathBuf>, modules_dir: &Option<PathBuf>,
-    critic_path: &Option<PathBuf>, max_tokens: usize,
+    critic_path: &Option<PathBuf>, readout_path: &Option<PathBuf>, max_tokens: usize,
 ) {
     let tokenizer = load_tokenizer(tokenizer_path);
     eprintln!("[eval] Loading model from {:?}", model_path);
@@ -1736,6 +1771,9 @@ fn cmd_eval(
 
     if let Some(p) = critic_path.as_ref() {
         apply_critic_file(&mut model, p);
+    }
+    if let Some(p) = readout_path.as_ref() {
+        apply_readout_file(&mut model, p);
     }
     let n_modules = if let Some(dir) = modules_dir.as_ref() {
         load_modules_into(&mut model, dir)
@@ -2158,9 +2196,10 @@ fn cmd_probe_readout(
     model_path: &PathBuf, train_path: &PathBuf, holdout_path: &PathBuf,
     tokenizer_path: &Option<PathBuf>, max_tokens: usize, epochs: usize,
     batch_size: usize, lr: f32, weight_decays: &str, seed: u64,
-    out: &Option<PathBuf>,
+    out: &Option<PathBuf>, save_readout: &Option<PathBuf>,
 ) {
     use clob::learn::readout::{fixed_logprob_nll, unigram_log_bias, FitConfig, LinearReadout};
+    use clob::nn::readout::TrainedReadout;
 
     let seed_tree = clob::util::seed::SeedTree::new(seed);
     let tokenizer = load_tokenizer(tokenizer_path);
@@ -2214,8 +2253,9 @@ fn cmd_probe_readout(
     // linear conditioning (a linear readout over standardized features is
     // equivalent to one over raw features); it only makes the momentum-SGD
     // well-scaled so the lr is not at the mercy of the random core's per-dim
-    // output magnitudes. ────────────────────────────────────────────────────
-    {
+    // output magnitudes. The (mean, inv_std) are retained so they can be
+    // folded into a saved readout (which then applies to raw hidden states).
+    let std_stats: (Vec<f32>, Vec<f32>) = {
         let n = tt.len();
         let mut mean = vec![0.0f64; d];
         for e in 0..n {
@@ -2247,7 +2287,9 @@ fn cmd_probe_readout(
                 }
             }
         }
-    }
+        (meanf, inv_std)
+    };
+    let (std_mean, std_inv) = std_stats;
 
     // ── Baselines ──────────────────────────────────────────────────────────
     let floor = (vocab as f64).ln(); // uniform over the model vocab
@@ -2291,6 +2333,8 @@ fn cmd_probe_readout(
     let start = Instant::now();
     // Per-wd: (wd, best_holdout_fitted, final_holdout, train_first, train_last, trace).
     let mut sweep: Vec<(f32, f64, f64, f64, f64, Vec<clob::learn::readout::EpochStat>)> = Vec::new();
+    // Fitted readouts retained in parallel so the best can be persisted.
+    let mut readouts: Vec<LinearReadout> = Vec::new();
     for &wd in &wds {
         let cfg = FitConfig { epochs, batch_size, lr, weight_decay: wd, ..FitConfig::default() };
         let mut readout = LinearReadout::with_bias(vocab, d, bias.clone());
@@ -2304,6 +2348,7 @@ fn cmd_probe_readout(
         eprintln!("[probe] wd={:<8}: best_holdout={:.4} final={:.4} (train {:.4}→{:.4})",
             wd, bf, fin, tfirst, tlast);
         sweep.push((wd, bf, fin, tfirst, tlast, trace));
+        readouts.push(readout);
     }
     let elapsed = start.elapsed().as_secs_f64();
 
@@ -2397,6 +2442,40 @@ fn cmd_probe_readout(
             if let Err(e) = manifest.save_sidecar(out_path) {
                 eprintln!("[probe] manifest write failed: {}", e);
             }
+        }
+    }
+
+    // ── Persist the best-fitted readout as an installable sidecar ───────────
+    // Fold standardization (x' = (x - mean)·inv_std) into (W, b) so the saved
+    // readout applies directly to raw hidden states:
+    //   logits = W·x' + b = (W·diag(inv_std))·x + (b - W·diag(inv_std)·mean).
+    if let Some(save_path) = save_readout {
+        let src = &readouts[best_idx]; // final-epoch weights of the best wd
+        let mut w_folded = vec![0.0f32; vocab * d];
+        let mut b_folded = src.b.clone();
+        for v in 0..vocab {
+            let mut shift = 0.0f32;
+            for k in 0..d {
+                let wp = src.w[v * d + k] * std_inv[k];
+                w_folded[v * d + k] = wp;
+                shift += wp * std_mean[k];
+            }
+            b_folded[v] -= shift;
+        }
+        let readout = TrainedReadout::new(vocab, d, w_folded, b_folded);
+        match std::fs::write(save_path, readout.to_bytes()) {
+            Ok(()) => {
+                eprintln!("[probe] saved readout sidecar (wd={}, final-epoch) → {:?}",
+                    best_wd, save_path);
+                let manifest = clob::config::manifest::RunManifest::new("probe-readout:readout")
+                    .with_seed(seed)
+                    .with_input("model", model_path)
+                    .with_input("train", train_path);
+                if let Err(e) = manifest.save_sidecar(save_path) {
+                    eprintln!("[probe] readout manifest write failed: {}", e);
+                }
+            }
+            Err(e) => eprintln!("[probe] readout save failed: {}", e),
         }
     }
 }

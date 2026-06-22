@@ -10,6 +10,7 @@ use crate::model::config::KernelConfig;
 use crate::nn::confidence::{AdaptiveConfig, ConfidenceHead, MetaCritic};
 use crate::nn::embed::Embedding;
 use crate::nn::energy::EnergyCritic;
+use crate::nn::readout::TrainedReadout;
 use crate::nn::rmsnorm::RMSNorm;
 use crate::simd::KernelDispatch;
 use crate::tensor::Tensor;
@@ -26,6 +27,11 @@ pub struct CoreModel {
     last_hidden: Tensor,
     buf_x: Tensor,
     buf_logits: Tensor,
+    /// Phase L+: trained untied output head. When present, it replaces the
+    /// tied embedding-table unembedding at readout. Installed as a sidecar
+    /// (`--readout`), produced by `probe-readout --save-readout`. The frozen
+    /// tied readout predicts worse than chance; this is the fix.
+    readout: Option<TrainedReadout>,
     /// Crystallized knowledge modules, applied after final_norm.
     /// Additive, scaled by cosine similarity to each module's domain signature.
     crystal_modules: Vec<CrystalModule>,
@@ -84,6 +90,7 @@ impl CoreModel {
             crystal_activation_threshold: 0.3,
             buf_module_out,
             confidence_head: None,
+            readout: None,
             confidence_detector: NoveltyDetector::new(),
             meta_critic: None,
             adaptive_config: AdaptiveConfig::default(),
@@ -112,12 +119,31 @@ impl CoreModel {
             crystal_activation_threshold: 0.3,
             buf_module_out,
             confidence_head: None,
+            readout: None,
             confidence_detector: NoveltyDetector::new(),
             meta_critic: None,
             adaptive_config: AdaptiveConfig::default(),
             extra_steps_counter: 0,
             meta_suppressed_counter: 0,
         }
+    }
+
+    /// Install a trained untied readout. It replaces the tied embedding-table
+    /// unembedding at the output. Dimensions must match the model.
+    pub fn set_readout(&mut self, readout: TrainedReadout) {
+        assert_eq!(
+            readout.d_model(), self.config.d_model,
+            "readout d_model {} != model d_model {}", readout.d_model(), self.config.d_model,
+        );
+        assert_eq!(
+            readout.vocab_size(), self.config.vocab_size,
+            "readout vocab {} != model vocab {}", readout.vocab_size(), self.config.vocab_size,
+        );
+        self.readout = Some(readout);
+    }
+
+    pub fn has_readout(&self) -> bool {
+        self.readout.is_some()
     }
 
     /// Install a pre-trained Head C. Its `dim()` must equal `config.d_model`.
@@ -268,7 +294,10 @@ impl CoreModel {
         }
 
         self.last_hidden.copy_from(&self.buf_x);
-        self.embedding.unembed(&self.buf_x, &mut self.buf_logits);
+        match &self.readout {
+            Some(r) => r.unembed(&self.buf_x, &mut self.buf_logits),
+            None => self.embedding.unembed(&self.buf_x, &mut self.buf_logits),
+        }
 
         Tensor::from_vec(self.buf_logits.data().to_vec(), &[self.config.vocab_size])
     }
@@ -321,7 +350,10 @@ impl CoreModel {
         self.final_norm.forward(&mut self.buf_x, &self.dispatch);
         self.apply_crystal_modules();
         self.last_hidden.copy_from(&self.buf_x);
-        self.embedding.unembed(&self.buf_x, &mut self.buf_logits);
+        match &self.readout {
+            Some(r) => r.unembed(&self.buf_x, &mut self.buf_logits),
+            None => self.embedding.unembed(&self.buf_x, &mut self.buf_logits),
+        }
         let logits = Tensor::from_vec(self.buf_logits.data().to_vec(), &[self.config.vocab_size]);
         (logits, route_captures)
     }
