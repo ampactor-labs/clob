@@ -20,6 +20,18 @@ See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 
 ## State (updated 2026-06-21 — Phases G–K shipped, pre-first-real-run)
 
+> **Update 2026-06-22 — the reservoir fork is resolved (Path B).** The first
+> real-data run (`scripts/first_run.sh`) confirmed the core never learns:
+> crystallization had nothing to compress on a frozen random core (0 modules),
+> and the model predicted worse than chance (the tied random readout). A
+> purpose-built **reservoir probe** (`probe-readout`) then settled the
+> `IF_FOUND.md` fork empirically — the frozen core carries no decodable context
+> beyond the token marginal, so Path A is falsified and **the core must be
+> trained (Path B)**. Step one shipped: an untied trainable output head
+> (`TrainedReadout` sidecar). Full write-up:
+> `docs/experiments/2026-06-22-reservoir-probe.md`. Next: a backward pass
+> through the ternary SSM, wiring `src/learn/`, and a `train` command.
+
 **Branch:** `main`, 12 commits ahead of `origin/main` (not pushed).
 
 **Commit history (most recent first):**

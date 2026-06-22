@@ -50,7 +50,8 @@ cargo build --release
 |:--|:--|
 | `synth` | Generate a random seed model for a given config. |
 | `ingest` | Stream a corpus through the model, record novel episodes, optionally log metrics and use adaptive compute. |
-| `eval` | One-shot cross-entropy / perplexity evaluation. |
+| `eval` | One-shot cross-entropy / perplexity evaluation (`--readout` to install a trained output head). |
+| `probe-readout` | Fit a trainable readout over the frozen core to test whether it carries decodable context; optionally save the readout as a sidecar. |
 | `calibrate` | Train the energy critic (Head N) online against NLL. |
 | `calibrate-confidence` | Train Head C + MetaCritic (target-network). |
 | `train-router` | Train MoE routers with REINFORCE + counterfactuals. |
@@ -76,13 +77,32 @@ and auditable.
 
 ## Current state
 
-Five-phase supercharge shipped (multi-head critic, adaptive decode,
-active selection, meta-critic with target-network, router
-policy-gradient training, symbolic synthesis via a ternary-reducible
-DSL). First-run readiness scaffolding in progress — see `PLAN.md`
-for the phase tracker.
+The full pipeline runs end-to-end on real data, reproducibly, with
+per-run manifests. The infrastructure — multi-head critic, adaptive
+decode, active selection, meta-critic with target-network, router
+policy-gradient training, symbolic synthesis, the crystallization loop
+— is built and tested (70+ tests on every commit).
+
+But the honest headline is that **the core does not yet learn**: it
+stands at random initialization, and the machinery to train it exists
+but was wired to nothing (`IF_FOUND.md` is the kernel's candid
+self-record). That left one architectural fork unmade — *is the random
+core a usable reservoir, or must it be trained?* — and the project's
+discipline is to answer such questions with **pre-registered,
+falsifiable experiments**, not argument (`ARCHITECTURE.md` Part V).
+
+That fork is now resolved. A purpose-built **reservoir probe** fit a
+trainable readout over the frozen core and showed — against a proper
+trained-bias-only null, after fixing an optimizer artifact that would
+have given the right answer for the wrong reason — that the frozen core
+carries **no decodable context beyond the token marginal**. Reservoir:
+dead. The path forward is to train the core (Path B), and step one is
+already shipped: an untied, trainable output head that takes the model
+from *worse than chance* to the marginal (~36× perplexity).
+
+- **The investigation:** [`docs/experiments/2026-06-22-reservoir-probe.md`](docs/experiments/2026-06-22-reservoir-probe.md)
+- **The kernel's self-record + the resolved fork:** [`IF_FOUND.md`](IF_FOUND.md)
 
 Every subsystem is verified on a 1.5 KB smoke corpus against random
-synth weights. The next gate is `scripts/first_run.sh` meeting a
-real corpus — that's where J/nat becomes diagnostic rather than
-infrastructure-only.
+synth weights; `scripts/first_run.sh` runs the whole loop on a real
+corpus.

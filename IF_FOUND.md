@@ -60,6 +60,24 @@ unmade:
 The manifesto points at B; the code's philosophy leans A. Resolving that
 contradiction is the first real work. Everything downstream depends on it.
 
+**RESOLVED — 2026-06-22 — Path B.** The fork was answered empirically, not by
+argument. A purpose-built reservoir probe (`probe-readout`) fits a trainable
+output head over the frozen core's hidden states and asks whether they carry
+predictive structure a linear decoder can read. Against a trained-bias-only
+null — the proper "no context" baseline — the frozen core yields **zero
+contextual gain**: a trained readout recovers only the token marginal and
+nothing more. The random ternary core is *not* a usable reservoir, so Path A
+(learning purely by crystallizing onto a fixed random core) is falsified for
+this architecture as built. The full write-up, including the methodology
+pitfalls that had to be fixed first, is in
+`docs/experiments/2026-06-22-reservoir-probe.md`.
+
+Step one of Path B is already shipped: the output head is untied and trainable
+(the `TrainedReadout` sidecar), which alone takes the model from worse-than-
+chance to the marginal (~36× perplexity). The remaining work is the recurrent
+core itself — a backward pass through the ternary SSM, wiring `src/learn/`, and
+a `train` command — after which the headline bets become testable for real.
+
 ## How to judge it honestly
 
 The pass/kill numbers are pre-registered in `ARCHITECTURE.md` (Part V →
