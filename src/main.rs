@@ -366,6 +366,45 @@ enum Commands {
         #[arg(long, default_value_t = 500)]
         meta_refresh: u64,
     },
+    /// Reservoir probe (IF_FOUND.md fork): fit a dense f32 readout
+    /// `logits = W·h + b` over the FROZEN core's hidden states and compare
+    /// held-out NLL against the unigram marginal. The gap is the contextual
+    /// information the frozen random core linearly exposes. ~0 ⇒ reservoir
+    /// dead, train the core (Path B); real gap ⇒ reservoir alive (Path A).
+    /// Pure diagnostic — does not touch the on-disk format or the tied table.
+    ProbeReadout {
+        #[arg(long)]
+        model: PathBuf,
+        /// Training corpus (.tokens or raw text) — frozen-core features fit here.
+        #[arg(long)]
+        train: PathBuf,
+        /// Held-out corpus (.tokens or raw text) — the deciding measurement.
+        #[arg(long)]
+        holdout: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Cap on training positions (0 = all). Features cache ~= n·d·4 bytes.
+        #[arg(long, default_value_t = 0)]
+        max_tokens: usize,
+        #[arg(long, default_value_t = 6)]
+        epochs: usize,
+        #[arg(long, default_value_t = 512)]
+        batch_size: usize,
+        /// Momentum-SGD learning rate (features are standardized first).
+        #[arg(long, default_value_t = 0.5)]
+        lr: f32,
+        /// Comma-separated L2 weight decays to sweep (features once, fit each).
+        /// The verdict uses the best held-out result across the sweep, so a
+        /// weak signal cannot be hidden behind a single under-regularized fit.
+        #[arg(long, default_value = "0.0001,0.001,0.01,0.1")]
+        weight_decays: String,
+        /// Root seed for the shuffle RNG (Phase G reproducibility).
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Optional JSON report path (a sidecar manifest is written beside it).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Train the energy critic online: stream a corpus, SGD the critic on
     /// MSE against per-step NLL, save it to a side file. No episode storage,
     /// no module installation. Separate from ingest by design.
@@ -539,6 +578,15 @@ fn main() {
             cmd_calibrate_confidence(
                 &model, &corpus, &tokenizer, &output, lr, epochs, max_tokens,
                 seed, &meta_out, meta_refresh,
+            );
+        }
+        Commands::ProbeReadout {
+            model, train, holdout, tokenizer, max_tokens, epochs, batch_size,
+            lr, weight_decays, seed, out,
+        } => {
+            cmd_probe_readout(
+                &model, &train, &holdout, &tokenizer, max_tokens, epochs,
+                batch_size, lr, &weight_decays, seed, &out,
             );
         }
         Commands::Eval { model, corpus, tokenizer, modules_dir, critic, max_tokens } => {
@@ -2099,6 +2147,257 @@ fn cmd_calibrate_confidence(
         eprintln!("[conf-cal] diagnostic (first {} tokens): pearson(head, nll) = {:.4}", xs.len(), r);
         println!("{{\"n_trained\":{},\"mse\":{:.6},\"pearson\":{:.6}}}",
             head.n_trained(), head.train_mse(), r);
+    }
+}
+
+/// Reservoir probe — fit a trainable f32 readout over the FROZEN core's
+/// hidden states and measure how much held-out NLL it recovers beyond the
+/// unigram marginal. See `clob::learn::readout` and `IF_FOUND.md`'s fork.
+#[allow(clippy::too_many_arguments)]
+fn cmd_probe_readout(
+    model_path: &PathBuf, train_path: &PathBuf, holdout_path: &PathBuf,
+    tokenizer_path: &Option<PathBuf>, max_tokens: usize, epochs: usize,
+    batch_size: usize, lr: f32, weight_decays: &str, seed: u64,
+    out: &Option<PathBuf>,
+) {
+    use clob::learn::readout::{fixed_logprob_nll, unigram_log_bias, FitConfig, LinearReadout};
+
+    let seed_tree = clob::util::seed::SeedTree::new(seed);
+    let tokenizer = load_tokenizer(tokenizer_path);
+    eprintln!("[probe] Loading model from {:?}", model_path);
+    let mut model = io::loader::load_model(model_path).expect("failed to load");
+    assert_vocab_compatible(&tokenizer, &model.config);
+
+    let d = model.config.d_model;
+    let vocab = model.config.vocab_size;
+    eprintln!("[probe] frozen core: d_model={}, vocab={} — no head, no modules", d, vocab);
+
+    // ── Extract frozen-core features. The hidden state AFTER consuming
+    // token[i] is the predictor of token[i+1]; it is exactly what the tied
+    // unembedding reads, so the trained readout sees the same features the
+    // model's own (random) readout does. The SSM is recurrent — stream in
+    // order, resetting state at the start of each corpus. ──────────────────
+    let extract = |model: &mut CoreModel, tokens: &[u32], cap: usize, tag: &str|
+        -> (Vec<f32>, Vec<u32>, f64) {
+        let limit = if cap == 0 { tokens.len() } else { tokens.len().min(cap) };
+        let n = limit.saturating_sub(1);
+        let mut feats = Vec::with_capacity(n * d);
+        let mut targets = Vec::with_capacity(n);
+        let mut tied_nll = 0.0f64; // the model's own tied-random readout, for reference
+        model.reset_state();
+        for i in 0..n {
+            let logits = model.decode_step(tokens[i]);
+            let actual = tokens[i + 1];
+            tied_nll += -(prob_of_token(logits.data(), actual).max(1e-12) as f64).ln();
+            feats.extend_from_slice(model.last_hidden().data());
+            targets.push(actual);
+            if (i + 1) % 50_000 == 0 {
+                eprintln!("[probe] {}: extracted {}/{} features", tag, i + 1, n);
+            }
+        }
+        let tied_mean = if n > 0 { tied_nll / n as f64 } else { 0.0 };
+        (feats, targets, tied_mean)
+    };
+
+    let train_tokens = load_or_encode_tokens(train_path, &tokenizer, &model.config);
+    eprintln!("[probe] extracting TRAIN features from {:?}", train_path);
+    let (mut tf, tt, _tied_train) = extract(&mut model, &train_tokens, max_tokens, "train");
+
+    let holdout_tokens = load_or_encode_tokens(holdout_path, &tokenizer, &model.config);
+    eprintln!("[probe] extracting HOLDOUT features from {:?}", holdout_path);
+    let (mut hf, ht, tied_holdout) = extract(&mut model, &holdout_tokens, 0, "holdout");
+
+    eprintln!("[probe] train positions={}, holdout positions={}", tt.len(), ht.len());
+
+    // ── Standardize features: per-dim zero-mean / unit-variance from TRAIN
+    // statistics, applied to both splits. This is an information-preserving
+    // linear conditioning (a linear readout over standardized features is
+    // equivalent to one over raw features); it only makes the momentum-SGD
+    // well-scaled so the lr is not at the mercy of the random core's per-dim
+    // output magnitudes. ────────────────────────────────────────────────────
+    {
+        let n = tt.len();
+        let mut mean = vec![0.0f64; d];
+        for e in 0..n {
+            let h = &tf[e * d..e * d + d];
+            for k in 0..d {
+                mean[k] += h[k] as f64;
+            }
+        }
+        for m in mean.iter_mut() {
+            *m /= n.max(1) as f64;
+        }
+        let mut var = vec![0.0f64; d];
+        for e in 0..n {
+            let h = &tf[e * d..e * d + d];
+            for k in 0..d {
+                let dv = h[k] as f64 - mean[k];
+                var[k] += dv * dv;
+            }
+        }
+        let meanf: Vec<f32> = mean.iter().map(|&m| m as f32).collect();
+        let inv_std: Vec<f32> = var
+            .iter()
+            .map(|&s| (1.0 / (s / n.max(1) as f64).sqrt().max(1e-6)) as f32)
+            .collect();
+        for feats in [&mut tf, &mut hf] {
+            for h in feats.chunks_mut(d) {
+                for k in 0..d {
+                    h[k] = (h[k] - meanf[k]) * inv_std[k];
+                }
+            }
+        }
+    }
+
+    // ── Baselines ──────────────────────────────────────────────────────────
+    let floor = (vocab as f64).ln(); // uniform over the model vocab
+    let bias = unigram_log_bias(&tt, vocab);
+    let marginal_holdout = fixed_logprob_nll(&bias, &ht); // Laplace unigram (fixed)
+
+    // ── Trained-bias-only null (the proper "no context" baseline) ───────────
+    // W frozen at 0, only the bias trained under the identical objective. This
+    // re-fits the token marginal as well as a linear readout possibly can
+    // WITHOUT using the core's hidden state, so the gap between a full fit and
+    // this null is purely the contextual (W·h) contribution. Comparing instead
+    // against the hand-set Laplace marginal would miscredit bias-fitting as if
+    // it were context.
+    let bias_only_holdout = {
+        let cfg = FitConfig {
+            epochs, batch_size, lr, weight_decay: 0.0, freeze_w: true,
+            ..FitConfig::default()
+        };
+        let mut null = LinearReadout::with_bias(vocab, d, bias.clone());
+        let mut nrng = seed_tree.child("readout_bias_only");
+        let ntrace = null.fit(&tf, &tt, &hf, &ht, &cfg, &mut nrng);
+        let bo = ntrace.iter().map(|s| s.holdout_nll).fold(marginal_holdout, f64::min);
+        eprintln!("[probe] bias-only null: holdout NLL = {:.4} (Laplace marginal = {:.4})",
+            bo, marginal_holdout);
+        bo
+    };
+
+    // ── Fit the trainable readout across a weight-decay sweep ───────────────
+    // Features are extracted once; each wd gets a fresh readout warm-started
+    // at the marginal. The verdict uses the best held-out NLL across the whole
+    // sweep, so a weak-but-real signal cannot be hidden behind a single
+    // under- or over-regularized fit.
+    let wds: Vec<f32> = weight_decays
+        .split(',')
+        .filter_map(|s| s.trim().parse::<f32>().ok())
+        .collect();
+    let wds = if wds.is_empty() { vec![1e-3] } else { wds };
+    eprintln!("[probe] fitting readout: epochs={}, batch_size={}, lr={}, wd sweep={:?}",
+        epochs, batch_size, lr, wds);
+
+    let start = Instant::now();
+    // Per-wd: (wd, best_holdout_fitted, final_holdout, train_first, train_last, trace).
+    let mut sweep: Vec<(f32, f64, f64, f64, f64, Vec<clob::learn::readout::EpochStat>)> = Vec::new();
+    for &wd in &wds {
+        let cfg = FitConfig { epochs, batch_size, lr, weight_decay: wd, ..FitConfig::default() };
+        let mut readout = LinearReadout::with_bias(vocab, d, bias.clone());
+        // Independent, deterministic shuffle stream per wd.
+        let mut fit_rng = seed_tree.child(&format!("readout_shuffle_wd{}", wd));
+        let trace = readout.fit(&tf, &tt, &hf, &ht, &cfg, &mut fit_rng);
+        let bf = trace.iter().map(|s| s.holdout_nll).fold(f64::INFINITY, f64::min);
+        let fin = trace.last().map(|s| s.holdout_nll).unwrap_or(f64::NAN);
+        let tfirst = trace.first().map(|s| s.train_nll).unwrap_or(f64::NAN);
+        let tlast = trace.last().map(|s| s.train_nll).unwrap_or(f64::NAN);
+        eprintln!("[probe] wd={:<8}: best_holdout={:.4} final={:.4} (train {:.4}→{:.4})",
+            wd, bf, fin, tfirst, tlast);
+        sweep.push((wd, bf, fin, tfirst, tlast, trace));
+    }
+    let elapsed = start.elapsed().as_secs_f64();
+
+    // Best wd = lowest held-out NLL across the sweep.
+    let best_idx = sweep
+        .iter()
+        .enumerate()
+        .min_by(|a, b| a.1 .1.partial_cmp(&b.1 .1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    let (best_wd, best_fitted, final_holdout, train_first, train_last, trace) = {
+        let s = &sweep[best_idx];
+        (s.0, s.1, s.2, s.3, s.4, s.5.clone())
+    };
+    // The readout can always fall back to the bias-only null (W=0), so the
+    // best *achievable* holdout NLL is floored there.
+    let best_holdout = best_fitted.min(bias_only_holdout);
+
+    // Convergence guard: if the best-performing fit still ran its training loss
+    // away from the near-optimal warm start AND never beat the null, the
+    // optimization failed — not evidence about the reservoir. Refuse to call
+    // it dead in that case.
+    let diverged = train_last > train_first + 0.1 && best_fitted > bias_only_holdout;
+
+    // ── Verdict. The deciding quantity is how far the full readout falls below
+    // the trained-bias-only null: that gap is purely the frozen core's
+    // contextual (W·h) contribution, with the token-marginal advantage divided
+    // out. (Heuristic bands for orientation — NOT the pre-registered Part V bet
+    // thresholds.) ─────────────────────────────────────────────────────────
+    let gain_abs = bias_only_holdout - best_holdout;
+    let gain_rel = if bias_only_holdout > 0.0 { gain_abs / bias_only_holdout } else { 0.0 };
+    let verdict = if diverged {
+        "FIT DID NOT CONVERGE — training loss rose from the warm start and no epoch beat the bias-only null; lower --lr and re-run. Result INVALID, not a reservoir verdict."
+    } else if gain_rel >= 0.02 {
+        "RESERVOIR ALIVE — full readout beats the trained-bias-only null; the frozen core exposes linearly-readable context. Path A (reservoir) viable, crystallization has signal to compress."
+    } else if gain_rel >= 0.005 {
+        "WEAK SIGNAL — full readout barely beats the bias-only null; inconclusive, lean Path B."
+    } else {
+        "RESERVOIR DEAD — full readout matches the trained-bias-only null; the core's hidden state adds no usable context beyond the token marginal. Path B (train the core) is mandatory."
+    };
+
+    eprintln!();
+    eprintln!("[probe] ===== reservoir probe summary =====");
+    eprintln!("[probe]  uniform floor      ln(vocab) = {:.4}", floor);
+    eprintln!("[probe]  tied-random readout (model's own) holdout NLL = {:.4}", tied_holdout);
+    eprintln!("[probe]  Laplace unigram marginal     holdout NLL = {:.4}", marginal_holdout);
+    eprintln!("[probe]  trained-bias-only NULL       holdout NLL = {:.4}", bias_only_holdout);
+    eprintln!("[probe]  --- weight-decay sweep (best holdout per wd) ---");
+    for (wd, bf, _fin, _tf, _tl, _tr) in &sweep {
+        let mark = if (*wd - best_wd).abs() < f32::EPSILON { " <- best" } else { "" };
+        eprintln!("[probe]    wd={:<8} best_holdout={:.4}{}", wd, bf, mark);
+    }
+    eprintln!("[probe]  TRAINED readout (best wd={})  holdout NLL = {:.4}", best_wd, best_fitted);
+    eprintln!("[probe]  TRAINED readout (floored)    holdout NLL = {:.4}", best_holdout);
+    eprintln!("[probe]  TRAINED readout (final)      holdout NLL = {:.4}", final_holdout);
+    eprintln!("[probe]  contextual gain over bias-only null = {:.4} nats ({:+.2}%)",
+        gain_abs, gain_rel * 100.0);
+    eprintln!("[probe]  VERDICT: {}", verdict);
+    eprintln!("[probe]  ({:.1}s, {} wd × {} epochs)", elapsed, wds.len(), epochs);
+
+    // Machine-readable line on stdout (mirrors other subcommands).
+    println!(
+        "{{\"floor\":{:.6},\"tied_holdout_nll\":{:.6},\"marginal_holdout_nll\":{:.6},\"bias_only_null_nll\":{:.6},\"best_wd\":{},\"trained_holdout_nll_best\":{:.6},\"trained_holdout_nll_final\":{:.6},\"contextual_gain_nats\":{:.6},\"contextual_gain_rel\":{:.6},\"train_positions\":{},\"holdout_positions\":{}}}",
+        floor, tied_holdout, marginal_holdout, bias_only_holdout, best_wd, best_holdout, final_holdout,
+        gain_abs, gain_rel, tt.len(), ht.len()
+    );
+
+    if let Some(out_path) = out {
+        let sweep_json: Vec<String> = sweep.iter().map(|(wd, bf, fin, tfi, tla, _)|
+            format!("{{\"wd\":{},\"best_holdout_nll\":{:.6},\"final_holdout_nll\":{:.6},\"train_first\":{:.6},\"train_last\":{:.6}}}",
+                wd, bf, fin, tfi, tla)).collect();
+        let epochs_json: Vec<String> = trace.iter().map(|s|
+            format!("{{\"epoch\":{},\"train_nll\":{:.6},\"holdout_nll\":{:.6}}}",
+                s.epoch, s.train_nll, s.holdout_nll)).collect();
+        let report = format!(
+            "{{\n  \"floor\": {:.6},\n  \"tied_holdout_nll\": {:.6},\n  \"marginal_holdout_nll\": {:.6},\n  \"bias_only_null_nll\": {:.6},\n  \"best_wd\": {},\n  \"trained_holdout_nll_best\": {:.6},\n  \"trained_holdout_nll_final\": {:.6},\n  \"contextual_gain_nats\": {:.6},\n  \"contextual_gain_rel\": {:.6},\n  \"verdict\": \"{}\",\n  \"train_positions\": {},\n  \"holdout_positions\": {},\n  \"wd_sweep\": [{}],\n  \"best_wd_epochs\": [{}]\n}}\n",
+            floor, tied_holdout, marginal_holdout, bias_only_holdout, best_wd, best_holdout, final_holdout,
+            gain_abs, gain_rel,
+            verdict.split(" —").next().unwrap_or(verdict),
+            tt.len(), ht.len(), sweep_json.join(", "), epochs_json.join(", ")
+        );
+        if let Err(e) = std::fs::write(out_path, report) {
+            eprintln!("[probe] report write failed: {}", e);
+        } else {
+            eprintln!("[probe] wrote report {:?}", out_path);
+            let manifest = clob::config::manifest::RunManifest::new("probe-readout")
+                .with_seed(seed)
+                .with_input("model", model_path)
+                .with_input("train", train_path)
+                .with_input("holdout", holdout_path);
+            if let Err(e) = manifest.save_sidecar(out_path) {
+                eprintln!("[probe] manifest write failed: {}", e);
+            }
+        }
     }
 }
 

@@ -2,4 +2,5 @@
 
 pub mod grad;
 pub mod optimizer;
+pub mod readout;
 pub mod replay;
