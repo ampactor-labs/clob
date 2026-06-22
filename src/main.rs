@@ -160,6 +160,10 @@ enum Commands {
         /// weights with the trained version before ingestion.
         #[arg(long)]
         routers: Option<PathBuf>,
+        /// Install a trained untied readout sidecar, replacing the tied
+        /// unembedding. Produced by `probe-readout --save-readout`.
+        #[arg(long)]
+        readout: Option<PathBuf>,
         /// Enable adaptive test-time compute: when Head C signals low
         /// confidence, the block stack iterates extra times before
         /// unembedding. Requires --confidence-head to be set.
@@ -528,7 +532,7 @@ fn main() {
         }
         Commands::Ingest {
             model, input, memory_dir, tokenizer, modules_dir, critic, max_tokens,
-            metrics_out, metrics_window, confidence_head, meta_critic, routers,
+            metrics_out, metrics_window, confidence_head, meta_critic, routers, readout,
             adaptive_compute, adaptive_max_extra, adaptive_z, meta_unreliable_threshold,
             checkpoint_every, checkpoint_dir, resume_from,
         } => {
@@ -541,7 +545,7 @@ fn main() {
             cmd_ingest(
                 &model, &input, &memory_dir, &tokenizer, &modules_dir, &critic,
                 max_tokens, &metrics_out, metrics_window, &confidence_head,
-                &meta_critic, &routers, adaptive,
+                &meta_critic, &routers, &readout, adaptive,
                 checkpoint_every, &checkpoint_dir, &resume_from,
             );
         }
@@ -1142,7 +1146,7 @@ fn cmd_ingest(
     critic_path: &Option<PathBuf>, max_tokens: usize,
     metrics_out: &Option<PathBuf>, metrics_window: u64,
     confidence_head_path: &Option<PathBuf>, meta_critic_path: &Option<PathBuf>,
-    routers_path: &Option<PathBuf>, adaptive: AdaptiveConfig,
+    routers_path: &Option<PathBuf>, readout_path: &Option<PathBuf>, adaptive: AdaptiveConfig,
     checkpoint_every: u64, checkpoint_dir: &Option<PathBuf>,
     resume_from: &Option<String>,
 ) {
@@ -1193,6 +1197,9 @@ fn cmd_ingest(
     }
     if let Some(p) = routers_path.as_ref() {
         apply_routers_file(&mut model, p);
+    }
+    if let Some(p) = readout_path.as_ref() {
+        apply_readout_file(&mut model, p);
     }
     model.adaptive_config = adaptive;
     if adaptive.enabled && !model.has_confidence_head() {
@@ -2450,7 +2457,7 @@ fn cmd_probe_readout(
     // readout applies directly to raw hidden states:
     //   logits = W·x' + b = (W·diag(inv_std))·x + (b - W·diag(inv_std)·mean).
     if let Some(save_path) = save_readout {
-        let src = &readouts[best_idx]; // final-epoch weights of the best wd
+        let src = &readouts[best_idx]; // best-held-out-epoch weights of the best wd
         let mut w_folded = vec![0.0f32; vocab * d];
         let mut b_folded = src.b.clone();
         for v in 0..vocab {
@@ -2465,7 +2472,7 @@ fn cmd_probe_readout(
         let readout = TrainedReadout::new(vocab, d, w_folded, b_folded);
         match std::fs::write(save_path, readout.to_bytes()) {
             Ok(()) => {
-                eprintln!("[probe] saved readout sidecar (wd={}, final-epoch) → {:?}",
+                eprintln!("[probe] saved readout sidecar (wd={}, best epoch) → {:?}",
                     best_wd, save_path);
                 let manifest = clob::config::manifest::RunManifest::new("probe-readout:readout")
                     .with_seed(seed)

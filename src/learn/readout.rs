@@ -260,6 +260,13 @@ impl LinearReadout {
         let mut order: Vec<usize> = (0..n).collect();
         let mut trace = Vec::with_capacity(cfg.epochs);
 
+        // Snapshot the best-held-out weights so the readout left behind (and
+        // any persisted artifact) is the best epoch, not merely the last —
+        // which matters whenever a later epoch overfits past the optimum.
+        let mut best_holdout = f64::INFINITY;
+        let mut best_w = self.w.clone();
+        let mut best_b = self.b.clone();
+
         let mut lr = cfg.lr;
         for epoch in 0..cfg.epochs {
             // Fisher–Yates shuffle for this epoch.
@@ -276,12 +283,20 @@ impl LinearReadout {
             lr *= cfg.lr_decay;
             let train_nll = if nb > 0 { epoch_loss / nb as f64 } else { 0.0 };
             let holdout_nll = self.eval(hf, ht);
+            if holdout_nll < best_holdout {
+                best_holdout = holdout_nll;
+                best_w.copy_from_slice(&self.w);
+                best_b.copy_from_slice(&self.b);
+            }
             trace.push(EpochStat {
                 epoch: epoch + 1,
                 train_nll,
                 holdout_nll,
             });
         }
+        // Leave the readout at its best-held-out epoch.
+        self.w = best_w;
+        self.b = best_b;
         trace
     }
 }

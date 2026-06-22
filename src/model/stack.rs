@@ -417,3 +417,41 @@ impl CoreModel {
         &self.energy_critic
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    // An installed readout must replace the tied unembedding in decode_step.
+    // With W = 0 and a distinctive bias, the logits must equal that bias
+    // exactly regardless of the hidden state — a deterministic proof that the
+    // output path routes through the readout when one is present.
+    #[test]
+    fn installed_readout_overrides_tied_unembed() {
+        let cfg = KernelConfig::tiny();
+        let (vocab, d) = (cfg.vocab_size, cfg.d_model);
+        let mut rng = StdRng::seed_from_u64(1);
+        let mut model = CoreModel::random(cfg, &mut rng);
+
+        model.reset_state();
+        let base = model.decode_step(7).data().to_vec();
+
+        let w = vec![0.0f32; vocab * d];
+        let b: Vec<f32> = (0..vocab).map(|v| v as f32 * 0.01).collect();
+        model.set_readout(TrainedReadout::new(vocab, d, w, b.clone()));
+        assert!(model.has_readout());
+
+        model.reset_state();
+        let with = model.decode_step(7).data().to_vec();
+        for v in 0..vocab {
+            assert!((with[v] - b[v]).abs() < 1e-5,
+                "logit {} = {} != installed bias {}", v, with[v], b[v]);
+        }
+        assert!(
+            base.iter().zip(&with).any(|(a, c)| (a - c).abs() > 1e-6),
+            "installing the readout did not change the output"
+        );
+    }
+}
