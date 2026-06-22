@@ -45,6 +45,17 @@ The `probe-readout` subcommand supplies the missing readout as a diagnostic:
 If the frozen core linearly exposes contextual structure, a trained readout
 will beat a context-free baseline. If it does not, it cannot.
 
+**Why linear is the right probe — not too weak.** The obvious objection is
+"maybe a *nonlinear* readout would find signal a linear one misses." But a
+linear readout is exactly the test the reservoir hypothesis calls for: the
+whole premise of reservoir computing (echo-state networks, extreme learning
+machines) is that a fixed random nonlinear projection lifts the input into a
+space where the relevant structure is **linearly** separable, so that only a
+*linear* readout need be trained. If the structure were recoverable only by a
+nonlinear readout, the "reservoir" would be doing none of the work — the
+readout would be. So a linear readout finding nothing is not a weak result; it
+is the hypothesis failing on its own terms.
+
 ## Three decisions that make the result trustworthy
 
 A naive version of this probe gives a confident **wrong** answer three
