@@ -4,3 +4,4 @@ pub mod check;
 pub mod grad;
 pub mod optimizer;
 pub mod replay;
+pub mod ssm;
