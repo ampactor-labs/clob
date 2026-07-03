@@ -1,0 +1,31 @@
+kernel_version = "0.1.0"
+git_commit = "e5621624e22c"
+subcommand = "bench-suite"
+args = [
+    "bench-suite",
+    "--model",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob",
+    "--eval-corpus",
+    "/home/suds/Projects/clob/data/corpus/holdout.txt",
+    "--tokenizer",
+    "/home/suds/Projects/clob/data/corpus/tokenizer.bin",
+    "--seeds",
+    "1,2,3",
+    "--confidence-head",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/conf.bin",
+    "--meta-critic",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/meta.bin",
+    "--routers-trained",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/routers.bin",
+    "--modules-dirs",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/modules",
+    "--out",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/bench.tsv",
+]
+utc_unix_seconds = 1782124464
+
+[input_hashes]
+confidence_head = "f55ccd1ea81caf08ec4c788ccde91572b827ef7622351821e61aea4f59da3469"
+eval_corpus = "5656b8527cd4fc310d9c5f29338898bda1f0e38f9be061b4d67d7e1401c9e37b"
+meta_critic = "191655c091e279b002f00e6279f2e1e19914621640a9c7abb1b63f3c0aea41ae"
+model = "bce9191315946b5a54c8bd7d0c83b114ffb407a46c80b7275d6b651e29221b65"

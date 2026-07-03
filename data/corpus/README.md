@@ -26,7 +26,9 @@ Produces:
 `scripts/acquire_corpus.sh` defaults to **Project Gutenberg #2701 — *Moby
 Dick* (Herman Melville)** — public domain, plain UTF-8, no attribution
 required. The script strips the Gutenberg header/footer boilerplate before
-splitting.
+splitting. For the default Moby-Dick source it also drops the table of
+contents/front matter so chapter headings are not duplicated between the
+training split and later held-out chapters.
 
 Override per-run without editing the script:
 
@@ -44,6 +46,7 @@ HOLDOUT_FRACTION=0.10 \
 ## Split discipline
 
 `tests/data_split.rs` (via `src/util/split_check.rs`) enforces that **no
-non-trivial holdout sentence appears in train**. When the real corpus is
-present it is checked as part of `cargo test`; when absent that test self-skips
-so CI stays green on a fresh clone.
+non-trivial holdout sentence appears in train**. Very short repeated headings
+and refrains are ignored; longer repeated prose is treated as contamination.
+When the real corpus is present it is checked as part of `cargo test`; when
+absent that test self-skips so CI stays green on a fresh clone.

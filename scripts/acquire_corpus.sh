@@ -66,6 +66,17 @@ if grep -q '\*\*\* *START OF' "$RAW"; then
     [ -s "$RAW.body" ] && mv "$RAW.body" "$RAW" || rm -f "$RAW.body"
 fi
 
+# The default Moby-Dick file contains a table of contents whose chapter
+# headings repeat later in the book. For split enforcement that looks like
+# train/holdout leakage, so for this corpus start at the real first chapter.
+if [ "$CORPUS_NAME" = "moby-dick-pg2701" ]; then
+    awk '
+        /^CHAPTER 1\. Loomings\.$/ { seen += 1 }
+        seen >= 2 { print }
+    ' "$RAW" > "$RAW.body"
+    [ -s "$RAW.body" ] && mv "$RAW.body" "$RAW" || rm -f "$RAW.body"
+fi
+
 # Split: last HOLDOUT_FRACTION of lines become holdout, the rest train.
 total=$(wc -l < "$RAW")
 holdout_lines=$(awk -v t="$total" -v f="$HOLDOUT_FRACTION" 'BEGIN{printf "%d", t*f}')

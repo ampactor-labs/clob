@@ -1,0 +1,16 @@
+kernel_version = "0.1.0"
+git_commit = "e5621624e22c"
+seed = 1
+subcommand = "synth"
+args = [
+    "synth",
+    "--seed",
+    "1",
+    "--config",
+    "seed",
+    "--output",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob",
+]
+utc_unix_seconds = 1782111496
+
+[input_hashes]

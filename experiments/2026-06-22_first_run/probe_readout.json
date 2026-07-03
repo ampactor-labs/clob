@@ -1,0 +1,16 @@
+{
+  "floor": 8.317766,
+  "tied_holdout_nll": 8.506331,
+  "marginal_holdout_nll": 4.916769,
+  "bias_only_null_nll": 4.916769,
+  "best_wd": 1,
+  "trained_holdout_nll_best": 4.916769,
+  "trained_holdout_nll_final": 4.924845,
+  "contextual_gain_nats": 0.000000,
+  "contextual_gain_rel": 0.000000,
+  "verdict": "RESERVOIR DEAD",
+  "train_positions": 149999,
+  "holdout_positions": 52271,
+  "wd_sweep": [{"wd":0.01,"best_holdout_nll":4.952002,"final_holdout_nll":4.952002,"train_first":5.684106,"train_last":4.896343}, {"wd":0.1,"best_holdout_nll":4.952767,"final_holdout_nll":4.952767,"train_first":5.479896,"train_last":4.894067}, {"wd":1,"best_holdout_nll":4.924845,"final_holdout_nll":4.924845,"train_first":5.199500,"train_last":4.851093}],
+  "best_wd_epochs": [{"epoch":1,"train_nll":5.199500,"holdout_nll":5.215959}, {"epoch":2,"train_nll":5.011237,"holdout_nll":5.040920}, {"epoch":3,"train_nll":4.912753,"holdout_nll":5.002933}, {"epoch":4,"train_nll":4.851093,"holdout_nll":4.924845}]
+}

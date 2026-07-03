@@ -1,0 +1,26 @@
+kernel_version = "0.1.0"
+git_commit = "e5621624e22c"
+seed = 1
+subcommand = "train-router"
+args = [
+    "train-router",
+    "--seed",
+    "1",
+    "--model",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob",
+    "--corpus",
+    "/home/suds/Projects/clob/data/corpus/train.txt",
+    "--tokenizer",
+    "/home/suds/Projects/clob/data/corpus/tokenizer.bin",
+    "--cf-rate",
+    "0.15",
+    "--max-tokens",
+    "0",
+    "--output",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/routers.bin",
+]
+utc_unix_seconds = 1782118516
+
+[input_hashes]
+corpus = "fefc842c6cc1fe39e5e916d8abe9a027e046087c303a2c86295014fe0815975a"
+model = "bce9191315946b5a54c8bd7d0c83b114ffb407a46c80b7275d6b651e29221b65"

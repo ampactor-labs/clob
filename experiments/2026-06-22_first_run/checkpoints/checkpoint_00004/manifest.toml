@@ -1,0 +1,35 @@
+kernel_version = "0.1.0"
+git_commit = "e5621624e22c"
+subcommand = "ingest"
+args = [
+    "ingest",
+    "--model",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob",
+    "--input",
+    "/home/suds/Projects/clob/data/corpus/train.tokens",
+    "--tokenizer",
+    "/home/suds/Projects/clob/data/corpus/tokenizer.bin",
+    "--memory-dir",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/episodes",
+    "--confidence-head",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/conf.bin",
+    "--meta-critic",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/meta.bin",
+    "--routers",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/routers.bin",
+    "--adaptive-compute",
+    "--metrics-out",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/metrics.jsonl",
+    "--metrics-window",
+    "1000",
+    "--max-tokens",
+    "0",
+    "--checkpoint-every",
+    "50000",
+    "--checkpoint-dir",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints",
+]
+utc_unix_seconds = 1782120381
+
+[input_hashes]
+corpus = "001e44de6868359ff62b5f849d5a00ed115f227bc6b6f604f3bf2a17a15a04dc"

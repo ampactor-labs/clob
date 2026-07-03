@@ -9,10 +9,11 @@
 
 use std::collections::HashSet;
 
-/// Sentences shorter than this many words are ignored. Short boilerplate
-/// ("He nodded.", "Chapter 3.") legitimately recurs across any split and would
-/// only generate noise; contamination that matters is whole reused sentences.
-pub const MIN_WORDS: usize = 5;
+/// Sentences shorter than this many words are ignored. Short boilerplate,
+/// chapter headings, and repeated refrains legitimately recur across a single
+/// book split and would only generate noise; contamination that matters is
+/// longer reused prose.
+pub const MIN_WORDS: usize = 8;
 
 /// A detected train/holdout contamination.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +59,10 @@ pub fn find_overlap(train: &str, holdout: &str) -> Option<Overlap> {
     offending.sort();
     let count = offending.len();
     offending.truncate(5);
-    Some(Overlap { count, examples: offending })
+    Some(Overlap {
+        count,
+        examples: offending,
+    })
 }
 
 #[cfg(test)]
@@ -77,8 +81,10 @@ mod tests {
     #[test]
     fn injected_overlap_is_detected() {
         let shared = "The crystallization loop turns prediction errors into compiled modules.";
-        let train = format!("Some preamble here about nothing in particular. {shared} More text follows.");
-        let holdout = format!("An unrelated holdout opening sentence with plenty of words. {shared}");
+        let train =
+            format!("Some preamble here about nothing in particular. {shared} More text follows.");
+        let holdout =
+            format!("An unrelated holdout opening sentence with plenty of words. {shared}");
         let overlap = find_overlap(&train, &holdout).expect("overlap must be detected");
         assert_eq!(overlap.count, 1);
         assert!(overlap.examples[0].contains("crystallization loop turns prediction errors"));
@@ -93,9 +99,16 @@ mod tests {
     }
 
     #[test]
+    fn short_refrains_and_headings_are_ignored() {
+        let train = "The Pequod Meets The Rachel. Hast seen the White Whale?";
+        let holdout = "The Pequod Meets The Rachel. Hast seen the White Whale?";
+        assert!(find_overlap(train, holdout).is_none());
+    }
+
+    #[test]
     fn normalization_ignores_whitespace_and_case() {
-        let train = "Compression   efficiency  per JOULE is the figure of merit here.";
-        let holdout = "compression efficiency per joule is the figure of merit here.";
+        let train = "Compression efficiency per joule is the durable figure of merit here.";
+        let holdout = "compression   efficiency  per JOULE is the durable figure of merit here.";
         assert!(find_overlap(train, holdout).is_some());
     }
 }

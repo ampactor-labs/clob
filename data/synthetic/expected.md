@@ -66,7 +66,7 @@ The Section-1 phrase embedded between noise tokens at varying offsets.
 
 ```bash
 clob synth   --seed 1 --output /tmp/diag.clob --config small
-clob ingest  --seed 1 --model /tmp/diag.clob \
+clob ingest  --model /tmp/diag.clob \
     --input data/synthetic/diagnostic.txt --memory-dir /tmp/diag_eps \
     --metrics-out /tmp/diag.jsonl
 clob crystal --model /tmp/diag.clob --memory-dir /tmp/diag_eps --modules-dir /tmp/diag_mods

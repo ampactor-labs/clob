@@ -1,0 +1,37 @@
+kernel_version = "0.1.0"
+git_commit = "0acc496b7a4e"
+seed = 1
+subcommand = "probe-readout"
+args = [
+    "probe-readout",
+    "--model",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob",
+    "--train",
+    "/home/suds/Projects/clob/data/corpus/train.tokens",
+    "--holdout",
+    "/home/suds/Projects/clob/data/corpus/holdout.tokens",
+    "--tokenizer",
+    "/home/suds/Projects/clob/data/corpus/tokenizer.bin",
+    "--max-tokens",
+    "150000",
+    "--epochs",
+    "4",
+    "--batch-size",
+    "512",
+    "--lr",
+    "0.5",
+    "--weight-decays",
+    "0.01,0.1,1.0",
+    "--seed",
+    "1",
+    "--out",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/probe_readout.json",
+    "--save-readout",
+    "/home/suds/Projects/clob/experiments/2026-06-22_first_run/readout.bin",
+]
+utc_unix_seconds = 1782151874
+
+[input_hashes]
+holdout = "557a55e625f3a7f6e544b92a0d6c9182b81de62a1f9f3006401000b9c52f54e6"
+model = "bce9191315946b5a54c8bd7d0c83b114ffb407a46c80b7275d6b651e29221b65"
+train = "001e44de6868359ff62b5f849d5a00ed115f227bc6b6f604f3bf2a17a15a04dc"

@@ -1,0 +1,6 @@
+tokens_processed = 200000
+optimizer_steps = 0
+seed = 0
+subcommand = "ingest"
+
+[extras]

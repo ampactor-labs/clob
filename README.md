@@ -1,14 +1,14 @@
 # clob
 
-A ternary recurrent intelligence kernel written in Rust, targeting a
-Lenovo T490 (i7-8550U, 16 GB RAM) as the floor-hardware substrate.
+A ternary recurrent intelligence kernel in Rust. The floor hardware is a
+Lenovo T490 (i7-8550U, 16 GB RAM); if it doesn't run there, it doesn't
+count.
 
-The architectural bet: **intelligence = compression efficiency per
-joule**. The mechanism: a crystallization loop that turns prediction
-errors into compiled ternary modules and discards the raw episodes
-once the pattern is captured. Every improvement should cost *less*
-energy, not more — if `J/nat` trends up, the design is failing on
-its own terms.
+The bet: intelligence is compression efficiency per joule. The mechanism:
+a crystallization loop that turns prediction errors into compiled ternary
+modules and discards the raw episodes once the pattern is captured. Every
+improvement should cost less energy, not more; if `J/nat` trends up, the
+design is failing on its own terms.
 
 ## Quick start
 
@@ -60,29 +60,30 @@ cargo build --release
 | `compile` | Demo: lower a ternary matrix to x86-64 + dlopen. |
 
 Every write command emits a `<output>.manifest.toml` sidecar with the
-seed, git commit, and sha256 of every input — runs are reproducible
-and auditable.
+seed, git commit, and sha256 of every input, so any run can be reproduced
+and audited.
 
 ## Deeper reading
 
-- `ARCHITECTURE.md` — the design manifesto. Part V names five
+- `ARCHITECTURE.md`: the design manifesto. Part V names five
   falsifiable bets and what would break each.
-- `PLAN.md` — the current forward roadmap, session-resume dossier,
+- `PLAN.md`: the current forward roadmap, session-resume dossier,
   and tiered ambition ladder (G–CC).
-- `docs/running.md` — the runbook with expected numbers and a
+- `docs/running.md`: the runbook with expected numbers and a
   diagnostic ladder.
-- `docs/subsystems/` — one page each on the crystallization loop, the
+- `docs/subsystems/`: one page each on the crystallization loop, the
   multi-head critic, the compile pipeline, and symbolic synthesis.
 
 ## Current state
 
-Five-phase supercharge shipped (multi-head critic, adaptive decode,
-active selection, meta-critic with target-network, router
-policy-gradient training, symbolic synthesis via a ternary-reducible
-DSL). First-run readiness scaffolding in progress — see `PLAN.md`
-for the phase tracker.
+The supporting machinery is built and has been exercised locally: a
+multi-head critic, adaptive decode, active input selection, a meta-critic
+with a target network, REINFORCE-trained MoE routers, and symbolic
+synthesis through a ternary-reducible DSL.
 
-Every subsystem is verified on a 1.5 KB smoke corpus against random
-synth weights. The next gate is `scripts/first_run.sh` meeting a
-real corpus — that's where J/nat becomes diagnostic rather than
-infrastructure-only.
+The core, though, is still random and untrained. The first real run
+crystallized zero modules, and the reservoir probe found no contextual
+gain from frozen hidden states beyond a trained unigram null. The current
+track is Path B: untie and train the recurrent core first, then evaluate
+crystallization again. See `docs/experiments/reservoir-probe.md` and
+`docs/plans/path-b-core-training-build.md`.

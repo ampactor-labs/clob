@@ -1,0 +1,1028 @@
+
+==== [06:51:03] acquire corpus ====
+acquiring corpus 'moby-dick-pg2701' from https://www.gutenberg.org/files/2701/2701-0.txt
+wrote /home/suds/Projects/clob/data/corpus/train.txt (19741 lines) and /home/suds/Projects/clob/data/corpus/holdout.txt (2193 lines)
+checksums pinned in /home/suds/Projects/clob/data/corpus/*.sha256
+next: ./scripts/tokenize_corpus.sh
+---- done in 1s
+
+==== [06:51:04] tokenize corpus (N_MERGES=3000) ====
+training BPE tokenizer (3000 merges) on train.txt
+[bpe] Reading corpus from "/home/suds/Projects/clob/data/corpus/train.txt"
+[bpe] Corpus: 1114540 bytes, 192138 words
+[bpe] Trained 3000 merges, vocab size = 3260
+[bpe] Saved: "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260, 124.78 KB)
+[bpe] Sample: "
+
+
+
+MOBY-DICK;
+
+or, THE WHALE.
+
+By Herma..." → 82 tokens (compression=1.22x)
+[bpe] Roundtrip: ✓
+encoding train -> train.tokens
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[encode] Reading corpus from "/home/suds/Projects/clob/data/corpus/train.txt"
+[encode] 1114540 chars -> 486855 tokens -> "/home/suds/Projects/clob/data/corpus/train.tokens" (1901.8 KB, 2.29 chars/token)
+encoding holdout -> holdout.tokens
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[encode] Reading corpus from "/home/suds/Projects/clob/data/corpus/holdout.txt"
+[encode] 119971 chars -> 52272 tokens -> "/home/suds/Projects/clob/data/corpus/holdout.tokens" (204.2 KB, 2.30 chars/token)
+done. ingest with:
+  /home/suds/Projects/clob/target/release/clob ingest --input /home/suds/Projects/clob/data/corpus/train.tokens --tokenizer /home/suds/Projects/clob/data/corpus/tokenizer.bin ...
+---- done in 45s
+
+experiment: /home/suds/Projects/clob/experiments/2026-06-22_first_run
+config=seed seed=1 max_tokens=0 epochs=2 smoke=0
+
+==== [06:51:49] synth seed model (--config seed) ====
+[synth] Config: d=512, L=8, V=4096, params=~29.4M
+[synth] Wrote 330 weight entries, 21.85 MB tensor data
+[synth] Done: "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob" (21.87 MB)
+---- done in 1s
+
+==== [06:51:50] calibrate-confidence (Head C + MetaCritic) ====
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[conf-cal] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[conf-cal] Tokenizing "/home/suds/Projects/clob/data/corpus/train.txt"
+[conf-cal] 486855 tokens × 2 epochs, lr=0.0001, meta-critic refresh every 500 steps
+
+==== [06:52:22] acquire corpus ====
+corpus present and verified: /home/suds/Projects/clob/data/corpus/train.txt, /home/suds/Projects/clob/data/corpus/holdout.txt
+---- done in 0s
+
+==== [06:52:22] tokenize corpus (N_MERGES=3000) ====
+tokenizer up to date: /home/suds/Projects/clob/data/corpus/tokenizer.bin
+train tokens up to date: /home/suds/Projects/clob/data/corpus/train.tokens
+holdout tokens up to date: /home/suds/Projects/clob/data/corpus/holdout.tokens
+done. ingest with:
+  /home/suds/Projects/clob/target/release/clob ingest --input /home/suds/Projects/clob/data/corpus/train.tokens --tokenizer /home/suds/Projects/clob/data/corpus/tokenizer.bin ...
+---- done in 0s
+
+experiment: /home/suds/Projects/clob/experiments/2026-06-22_first_run
+config=seed seed=1 max_tokens=0 epochs=2 smoke=0
+
+==== [06:52:22] synth seed model (--config seed) ====
+[synth] Config: d=512, L=8, V=4096, params=~29.4M
+[synth] Wrote 330 weight entries, 21.85 MB tensor data
+[synth] Done: "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob" (21.87 MB)
+---- done in 0s
+
+==== [06:52:22] calibrate-confidence (Head C + MetaCritic) ====
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[conf-cal] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[conf-cal] Tokenizing "/home/suds/Projects/clob/data/corpus/train.txt"
+[conf-cal] 486855 tokens × 2 epochs, lr=0.0001, meta-critic refresh every 500 steps
+
+==== [06:56:27] acquire corpus ====
+corpus present and verified: /home/suds/Projects/clob/data/corpus/train.txt, /home/suds/Projects/clob/data/corpus/holdout.txt
+---- done in 0s
+
+==== [06:56:27] tokenize corpus (N_MERGES=3000) ====
+tokenizer up to date: /home/suds/Projects/clob/data/corpus/tokenizer.bin
+train tokens up to date: /home/suds/Projects/clob/data/corpus/train.tokens
+holdout tokens up to date: /home/suds/Projects/clob/data/corpus/holdout.tokens
+done. ingest with:
+  /home/suds/Projects/clob/target/release/clob ingest --input /home/suds/Projects/clob/data/corpus/train.tokens --tokenizer /home/suds/Projects/clob/data/corpus/tokenizer.bin ...
+---- done in 0s
+
+experiment: /home/suds/Projects/clob/experiments/2026-06-22_first_run
+config=seed seed=1 max_tokens=0 epochs=2 smoke=0
+
+==== [06:56:27] synth seed model (--config seed) ====
+[synth] Config: d=512, L=8, V=4096, params=~29.4M
+[synth] Wrote 330 weight entries, 21.85 MB tensor data
+[synth] Done: "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob" (21.87 MB)
+---- done in 0s
+
+==== [06:56:27] calibrate-confidence (Head C + MetaCritic) ====
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[conf-cal] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[conf-cal] Tokenizing "/home/suds/Projects/clob/data/corpus/train.txt"
+[conf-cal] 486855 tokens × 2 epochs, lr=0.0001, meta-critic refresh every 500 steps
+Terminated                 "$CLOB" calibrate-confidence --seed "$SEED" --model "$SEEDM" --corpus "$TRAIN_TXT" "${TOK_ARGS[@]}" --output "$CONF" --meta-out "$META" --epochs "$EPOCHS"
+
+#### FAILED at: calibrate-confidence (Head C + MetaCritic) (after 78s). See /home/suds/Projects/clob/experiments/2026-06-22_first_run/run.log
+
+==== [06:58:16] acquire corpus ====
+corpus present and verified: /home/suds/Projects/clob/data/corpus/train.txt, /home/suds/Projects/clob/data/corpus/holdout.txt
+---- done in 0s
+
+==== [06:58:16] tokenize corpus (N_MERGES=3000) ====
+tokenizer up to date: /home/suds/Projects/clob/data/corpus/tokenizer.bin
+train tokens up to date: /home/suds/Projects/clob/data/corpus/train.tokens
+holdout tokens up to date: /home/suds/Projects/clob/data/corpus/holdout.tokens
+done. ingest with:
+  /home/suds/Projects/clob/target/release/clob ingest --input /home/suds/Projects/clob/data/corpus/train.tokens --tokenizer /home/suds/Projects/clob/data/corpus/tokenizer.bin ...
+---- done in 0s
+
+experiment: /home/suds/Projects/clob/experiments/2026-06-22_first_run
+config=seed seed=1 max_tokens=0 epochs=2 smoke=0
+
+==== [06:58:16] synth seed model (--config seed) ====
+[synth] Config: d=512, L=8, V=4096, params=~29.4M
+[synth] Wrote 330 weight entries, 21.85 MB tensor data
+[synth] Done: "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob" (21.87 MB)
+---- done in 0s
+
+==== [06:58:16] calibrate-confidence (Head C + MetaCritic) ====
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[conf-cal] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[conf-cal] Tokenizing "/home/suds/Projects/clob/data/corpus/train.txt"
+[conf-cal] 486855 tokens × 2 epochs, lr=0.0001, meta-critic refresh every 500 steps
+[conf-cal] epoch 1: n=486854, mean_nll=8.5097, mean_head_se=1.0445, cumulative_mse=1.0445, meta_se=0.5427, meta_mse_cum=0.5427, steps_since_refresh=354
+[conf-cal] epoch 2: n=486854, mean_nll=8.5097, mean_head_se=0.2870, cumulative_mse=0.6658, meta_se=0.1148, meta_mse_cum=0.3287, steps_since_refresh=208
+[conf-cal] wrote "/home/suds/Projects/clob/experiments/2026-06-22_first_run/conf.bin" (2076 bytes), 4698.08s total, n_trained=973708
+[conf-cal] wrote meta "/home/suds/Projects/clob/experiments/2026-06-22_first_run/meta.bin" (4168 bytes), n_trained=973708, mse=0.3287
+[conf-cal] diagnostic (first 1999 tokens): pearson(head, nll) = 0.2689
+{"n_trained":973708,"mse":0.665774,"pearson":0.268934}
+---- done in 4732s
+
+==== [08:17:08] train-router (MoE REINFORCE) ====
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[router] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[router] 3 MoE layers: [2, 5, 7]
+[router] cf_rate=0.15, lr=0.001, batch_size=64, baseline_decay=0.98
+[router] training on 486855 tokens
+[router] step 10 (tokens=640): baseline_nll=8.5209, last_nll=7.0716, advantage=+1.4788, cf=291, max_update_norm=0.025324
+[router] step 20 (tokens=1280): baseline_nll=8.5417, last_nll=6.8585, advantage=+1.7176, cf=577, max_update_norm=0.021850
+[router] step 30 (tokens=1920): baseline_nll=8.5250, last_nll=8.7531, advantage=-0.2328, cf=863, max_update_norm=0.020539
+[router] step 40 (tokens=2560): baseline_nll=8.5848, last_nll=8.1225, advantage=+0.4717, cf=1173, max_update_norm=0.018744
+[router] step 50 (tokens=3200): baseline_nll=8.5929, last_nll=7.7946, advantage=+0.8145, cf=1450, max_update_norm=0.017297
+[router] step 60 (tokens=3840): baseline_nll=8.4902, last_nll=8.0595, advantage=+0.4394, cf=1725, max_update_norm=0.016929
+[router] step 70 (tokens=4480): baseline_nll=8.4265, last_nll=8.7811, advantage=-0.3619, cf=2019, max_update_norm=0.017589
+[router] step 80 (tokens=5120): baseline_nll=8.4151, last_nll=8.5821, advantage=-0.1704, cf=2309, max_update_norm=0.018263
+[router] step 90 (tokens=5760): baseline_nll=8.5031, last_nll=7.4496, advantage=+1.0750, cf=2562, max_update_norm=0.018355
+[router] step 100 (tokens=6400): baseline_nll=8.5983, last_nll=8.4423, advantage=+0.1591, cf=2860, max_update_norm=0.017530
+[router] step 110 (tokens=7040): baseline_nll=8.5859, last_nll=8.8820, advantage=-0.3021, cf=3129, max_update_norm=0.017954
+[router] step 120 (tokens=7680): baseline_nll=8.5664, last_nll=9.2190, advantage=-0.6659, cf=3411, max_update_norm=0.018379
+[router] step 130 (tokens=8320): baseline_nll=8.5189, last_nll=7.9900, advantage=+0.5396, cf=3717, max_update_norm=0.019171
+[router] step 140 (tokens=8960): baseline_nll=8.4656, last_nll=8.0985, advantage=+0.3746, cf=4007, max_update_norm=0.017972
+[router] step 150 (tokens=9600): baseline_nll=8.4551, last_nll=8.9740, advantage=-0.5295, cf=4304, max_update_norm=0.017891
+[router] step 160 (tokens=10240): baseline_nll=8.5413, last_nll=8.5224, advantage=+0.0193, cf=4584, max_update_norm=0.017641
+[router] step 170 (tokens=10880): baseline_nll=8.5352, last_nll=8.1244, advantage=+0.4192, cf=4875, max_update_norm=0.017523
+[router] step 180 (tokens=11520): baseline_nll=8.5296, last_nll=7.6972, advantage=+0.8494, cf=5165, max_update_norm=0.020150
+[router] step 190 (tokens=12160): baseline_nll=8.6359, last_nll=8.9067, advantage=-0.2763, cf=5458, max_update_norm=0.019045
+[router] step 200 (tokens=12800): baseline_nll=8.4201, last_nll=8.4845, advantage=-0.0657, cf=5747, max_update_norm=0.019611
+[router] step 210 (tokens=13440): baseline_nll=8.5840, last_nll=8.4007, advantage=+0.1870, cf=6041, max_update_norm=0.017400
+[router] step 220 (tokens=14080): baseline_nll=8.5121, last_nll=7.0821, advantage=+1.4591, cf=6322, max_update_norm=0.017764
+[router] step 230 (tokens=14720): baseline_nll=8.3763, last_nll=8.1018, advantage=+0.2801, cf=6596, max_update_norm=0.019217
+[router] step 240 (tokens=15360): baseline_nll=8.5025, last_nll=8.6955, advantage=-0.1970, cf=6878, max_update_norm=0.018824
+[router] step 250 (tokens=16000): baseline_nll=8.5315, last_nll=6.9554, advantage=+1.6083, cf=7152, max_update_norm=0.018755
+[router] step 260 (tokens=16640): baseline_nll=8.5104, last_nll=8.2226, advantage=+0.2936, cf=7409, max_update_norm=0.018279
+[router] step 270 (tokens=17280): baseline_nll=8.4296, last_nll=8.3587, advantage=+0.0723, cf=7700, max_update_norm=0.017310
+[router] step 280 (tokens=17920): baseline_nll=8.5123, last_nll=8.2992, advantage=+0.2174, cf=7975, max_update_norm=0.018031
+[router] step 290 (tokens=18560): baseline_nll=8.5131, last_nll=9.1323, advantage=-0.6318, cf=8251, max_update_norm=0.018358
+[router] step 300 (tokens=19200): baseline_nll=8.3960, last_nll=7.9965, advantage=+0.4077, cf=8550, max_update_norm=0.018870
+[router] step 310 (tokens=19840): baseline_nll=8.5197, last_nll=7.5312, advantage=+1.0087, cf=8857, max_update_norm=0.017990
+[router] step 320 (tokens=20480): baseline_nll=8.4488, last_nll=7.7935, advantage=+0.6687, cf=9158, max_update_norm=0.019584
+[router] step 330 (tokens=21120): baseline_nll=8.4499, last_nll=8.6853, advantage=-0.2402, cf=9447, max_update_norm=0.018364
+[router] step 340 (tokens=21760): baseline_nll=8.5628, last_nll=8.3494, advantage=+0.2177, cf=9715, max_update_norm=0.019775
+[router] step 350 (tokens=22400): baseline_nll=8.5843, last_nll=10.0749, advantage=-1.5210, cf=9998, max_update_norm=0.018472
+[router] step 360 (tokens=23040): baseline_nll=8.5995, last_nll=8.9764, advantage=-0.3846, cf=10267, max_update_norm=0.017721
+[router] step 370 (tokens=23680): baseline_nll=8.5497, last_nll=8.3955, advantage=+0.1574, cf=10561, max_update_norm=0.016547
+[router] step 380 (tokens=24320): baseline_nll=8.5941, last_nll=9.0159, advantage=-0.4304, cf=10845, max_update_norm=0.017084
+[router] step 390 (tokens=24960): baseline_nll=8.4840, last_nll=8.9094, advantage=-0.4341, cf=11141, max_update_norm=0.017007
+[router] step 400 (tokens=25600): baseline_nll=8.6225, last_nll=8.5500, advantage=+0.0740, cf=11442, max_update_norm=0.018714
+[router] step 410 (tokens=26240): baseline_nll=8.5896, last_nll=8.8556, advantage=-0.2714, cf=11701, max_update_norm=0.018342
+[router] step 420 (tokens=26880): baseline_nll=8.5825, last_nll=8.5049, advantage=+0.0792, cf=11983, max_update_norm=0.018895
+[router] step 430 (tokens=27520): baseline_nll=8.4246, last_nll=8.2825, advantage=+0.1451, cf=12274, max_update_norm=0.020088
+[router] step 440 (tokens=28160): baseline_nll=8.5284, last_nll=8.3599, advantage=+0.1720, cf=12581, max_update_norm=0.017383
+[router] step 450 (tokens=28800): baseline_nll=8.3923, last_nll=8.4062, advantage=-0.0142, cf=12868, max_update_norm=0.018550
+[router] step 460 (tokens=29440): baseline_nll=8.6328, last_nll=9.7771, advantage=-1.1676, cf=13135, max_update_norm=0.018774
+[router] step 470 (tokens=30080): baseline_nll=8.5841, last_nll=8.4863, advantage=+0.0999, cf=13431, max_update_norm=0.017931
+[router] step 480 (tokens=30720): baseline_nll=8.5558, last_nll=8.8872, advantage=-0.3381, cf=13731, max_update_norm=0.018304
+[router] step 490 (tokens=31360): baseline_nll=8.5573, last_nll=8.6135, advantage=-0.0573, cf=14059, max_update_norm=0.017324
+[router] step 500 (tokens=32000): baseline_nll=8.4224, last_nll=8.1567, advantage=+0.2712, cf=14354, max_update_norm=0.018894
+[router] step 510 (tokens=32640): baseline_nll=8.4397, last_nll=8.2817, advantage=+0.1612, cf=14645, max_update_norm=0.019359
+[router] step 520 (tokens=33280): baseline_nll=8.3468, last_nll=7.5238, advantage=+0.8398, cf=14923, max_update_norm=0.019354
+[router] step 530 (tokens=33920): baseline_nll=8.5548, last_nll=8.9340, advantage=-0.3870, cf=15218, max_update_norm=0.018638
+[router] step 540 (tokens=34560): baseline_nll=8.4310, last_nll=8.6273, advantage=-0.2003, cf=15491, max_update_norm=0.018142
+[router] step 550 (tokens=35200): baseline_nll=8.5099, last_nll=8.7012, advantage=-0.1952, cf=15754, max_update_norm=0.018860
+[router] step 560 (tokens=35840): baseline_nll=8.5749, last_nll=8.6529, advantage=-0.0796, cf=16086, max_update_norm=0.019214
+[router] step 570 (tokens=36480): baseline_nll=8.5313, last_nll=9.0199, advantage=-0.4986, cf=16362, max_update_norm=0.017884
+[router] step 580 (tokens=37120): baseline_nll=8.4947, last_nll=8.6576, advantage=-0.1663, cf=16633, max_update_norm=0.018770
+[router] step 590 (tokens=37760): baseline_nll=8.6293, last_nll=10.0760, advantage=-1.4762, cf=16913, max_update_norm=0.019414
+[router] step 600 (tokens=38400): baseline_nll=8.4920, last_nll=8.1348, advantage=+0.3646, cf=17203, max_update_norm=0.018677
+[router] step 610 (tokens=39040): baseline_nll=8.5767, last_nll=8.1637, advantage=+0.4214, cf=17496, max_update_norm=0.018708
+[router] step 620 (tokens=39680): baseline_nll=8.5413, last_nll=8.0603, advantage=+0.4909, cf=17758, max_update_norm=0.020005
+[router] step 630 (tokens=40320): baseline_nll=8.6484, last_nll=9.4485, advantage=-0.8165, cf=18062, max_update_norm=0.017199
+[router] step 640 (tokens=40960): baseline_nll=8.5764, last_nll=7.5318, advantage=+1.0658, cf=18362, max_update_norm=0.017790
+[router] step 650 (tokens=41600): baseline_nll=8.5449, last_nll=8.9911, advantage=-0.4554, cf=18630, max_update_norm=0.019396
+[router] step 660 (tokens=42240): baseline_nll=8.4887, last_nll=8.1724, advantage=+0.3228, cf=18917, max_update_norm=0.019200
+[router] step 670 (tokens=42880): baseline_nll=8.4405, last_nll=8.1958, advantage=+0.2497, cf=19196, max_update_norm=0.018263
+[router] step 680 (tokens=43520): baseline_nll=8.5765, last_nll=9.2727, advantage=-0.7105, cf=19467, max_update_norm=0.019493
+[router] step 690 (tokens=44160): baseline_nll=8.4831, last_nll=8.2602, advantage=+0.2275, cf=19728, max_update_norm=0.017819
+[router] step 700 (tokens=44800): baseline_nll=8.5201, last_nll=7.6594, advantage=+0.8782, cf=20028, max_update_norm=0.020914
+[router] step 710 (tokens=45440): baseline_nll=8.5158, last_nll=8.2443, advantage=+0.2771, cf=20328, max_update_norm=0.019473
+[router] step 720 (tokens=46080): baseline_nll=8.4620, last_nll=7.6546, advantage=+0.8239, cf=20610, max_update_norm=0.018981
+[router] step 730 (tokens=46720): baseline_nll=8.4168, last_nll=8.2173, advantage=+0.2035, cf=20887, max_update_norm=0.019002
+[router] step 740 (tokens=47360): baseline_nll=8.5763, last_nll=9.6388, advantage=-1.0842, cf=21158, max_update_norm=0.019216
+[router] step 750 (tokens=48000): baseline_nll=8.5081, last_nll=8.6526, advantage=-0.1475, cf=21463, max_update_norm=0.018714
+[router] step 760 (tokens=48640): baseline_nll=8.4612, last_nll=7.7493, advantage=+0.7265, cf=21730, max_update_norm=0.018157
+[router] step 770 (tokens=49280): baseline_nll=8.5194, last_nll=8.4637, advantage=+0.0568, cf=22003, max_update_norm=0.019671
+[router] step 780 (tokens=49920): baseline_nll=8.4346, last_nll=8.2262, advantage=+0.2126, cf=22293, max_update_norm=0.019215
+[router] step 790 (tokens=50560): baseline_nll=8.5377, last_nll=8.3829, advantage=+0.1580, cf=22585, max_update_norm=0.021327
+[router] step 800 (tokens=51200): baseline_nll=8.5007, last_nll=7.9862, advantage=+0.5251, cf=22877, max_update_norm=0.018491
+[router] step 810 (tokens=51840): baseline_nll=8.4751, last_nll=8.3300, advantage=+0.1481, cf=23159, max_update_norm=0.018195
+[router] step 820 (tokens=52480): baseline_nll=8.5574, last_nll=8.4593, advantage=+0.1001, cf=23443, max_update_norm=0.017902
+[router] step 830 (tokens=53120): baseline_nll=8.4601, last_nll=8.3910, advantage=+0.0705, cf=23709, max_update_norm=0.016766
+[router] step 840 (tokens=53760): baseline_nll=8.6450, last_nll=8.4809, advantage=+0.1674, cf=24016, max_update_norm=0.017044
+[router] step 850 (tokens=54400): baseline_nll=8.4639, last_nll=8.8250, advantage=-0.3684, cf=24303, max_update_norm=0.018470
+[router] step 860 (tokens=55040): baseline_nll=8.5622, last_nll=8.7376, advantage=-0.1790, cf=24562, max_update_norm=0.019574
+[router] step 870 (tokens=55680): baseline_nll=8.4630, last_nll=8.7353, advantage=-0.2779, cf=24858, max_update_norm=0.018577
+[router] step 880 (tokens=56320): baseline_nll=8.6947, last_nll=9.3908, advantage=-0.7103, cf=25176, max_update_norm=0.019625
+[router] step 890 (tokens=56960): baseline_nll=8.4853, last_nll=7.2118, advantage=+1.2995, cf=25467, max_update_norm=0.018251
+[router] step 900 (tokens=57600): baseline_nll=8.4329, last_nll=8.9455, advantage=-0.5231, cf=25770, max_update_norm=0.019150
+[router] step 910 (tokens=58240): baseline_nll=8.4964, last_nll=7.5644, advantage=+0.9510, cf=26034, max_update_norm=0.018293
+[router] step 920 (tokens=58880): baseline_nll=8.3625, last_nll=9.0995, advantage=-0.7521, cf=26345, max_update_norm=0.018228
+[router] step 930 (tokens=59520): baseline_nll=8.5537, last_nll=9.0883, advantage=-0.5456, cf=26614, max_update_norm=0.018410
+[router] step 940 (tokens=60160): baseline_nll=8.4984, last_nll=8.8290, advantage=-0.3374, cf=26924, max_update_norm=0.017877
+[router] step 950 (tokens=60800): baseline_nll=8.5414, last_nll=7.6704, advantage=+0.8888, cf=27223, max_update_norm=0.019373
+[router] step 960 (tokens=61440): baseline_nll=8.5721, last_nll=8.4275, advantage=+0.1476, cf=27517, max_update_norm=0.020641
+[router] step 970 (tokens=62080): baseline_nll=8.6092, last_nll=8.8153, advantage=-0.2103, cf=27825, max_update_norm=0.020255
+[router] step 980 (tokens=62720): baseline_nll=8.6580, last_nll=8.2676, advantage=+0.3984, cf=28093, max_update_norm=0.018492
+[router] step 990 (tokens=63360): baseline_nll=8.6424, last_nll=8.6152, advantage=+0.0277, cf=28366, max_update_norm=0.018253
+[router] step 1000 (tokens=64000): baseline_nll=8.4935, last_nll=7.8407, advantage=+0.6661, cf=28665, max_update_norm=0.018643
+[router] step 1010 (tokens=64640): baseline_nll=8.5205, last_nll=8.8891, advantage=-0.3762, cf=28981, max_update_norm=0.018484
+[router] step 1020 (tokens=65280): baseline_nll=8.4831, last_nll=8.8111, advantage=-0.3346, cf=29284, max_update_norm=0.019146
+[router] step 1030 (tokens=65920): baseline_nll=8.4831, last_nll=9.2415, advantage=-0.7739, cf=29577, max_update_norm=0.018283
+[router] step 1040 (tokens=66560): baseline_nll=8.4906, last_nll=9.4931, advantage=-1.0229, cf=29839, max_update_norm=0.018105
+[router] step 1050 (tokens=67200): baseline_nll=8.4832, last_nll=8.8625, advantage=-0.3871, cf=30121, max_update_norm=0.017918
+[router] step 1060 (tokens=67840): baseline_nll=8.4590, last_nll=8.2282, advantage=+0.2354, cf=30407, max_update_norm=0.017315
+[router] step 1070 (tokens=68480): baseline_nll=8.4385, last_nll=9.3427, advantage=-0.9227, cf=30689, max_update_norm=0.018188
+[router] step 1080 (tokens=69120): baseline_nll=8.5910, last_nll=8.9124, advantage=-0.3279, cf=30974, max_update_norm=0.017337
+[router] step 1090 (tokens=69760): baseline_nll=8.5281, last_nll=8.7868, advantage=-0.2640, cf=31255, max_update_norm=0.016816
+[router] step 1100 (tokens=70400): baseline_nll=8.4650, last_nll=8.1770, advantage=+0.2939, cf=31544, max_update_norm=0.019675
+[router] step 1110 (tokens=71040): baseline_nll=8.4369, last_nll=8.5683, advantage=-0.1341, cf=31822, max_update_norm=0.019025
+[router] step 1120 (tokens=71680): baseline_nll=8.5538, last_nll=8.7119, advantage=-0.1614, cf=32111, max_update_norm=0.018173
+[router] step 1130 (tokens=72320): baseline_nll=8.4317, last_nll=8.8229, advantage=-0.3992, cf=32428, max_update_norm=0.017651
+[router] step 1140 (tokens=72960): baseline_nll=8.5811, last_nll=8.1910, advantage=+0.3981, cf=32729, max_update_norm=0.018511
+[router] step 1150 (tokens=73600): baseline_nll=8.5240, last_nll=8.3661, advantage=+0.1611, cf=33026, max_update_norm=0.018966
+[router] step 1160 (tokens=74240): baseline_nll=8.5970, last_nll=8.1271, advantage=+0.4795, cf=33299, max_update_norm=0.019150
+[router] step 1170 (tokens=74880): baseline_nll=8.4639, last_nll=9.1698, advantage=-0.7203, cf=33576, max_update_norm=0.017864
+[router] step 1180 (tokens=75520): baseline_nll=8.4474, last_nll=8.2673, advantage=+0.1837, cf=33852, max_update_norm=0.019538
+[router] step 1190 (tokens=76160): baseline_nll=8.5812, last_nll=9.1151, advantage=-0.5447, cf=34131, max_update_norm=0.018881
+[router] step 1200 (tokens=76800): baseline_nll=8.5419, last_nll=9.3268, advantage=-0.8010, cf=34406, max_update_norm=0.019129
+[router] step 1210 (tokens=77440): baseline_nll=8.5056, last_nll=8.0758, advantage=+0.4386, cf=34689, max_update_norm=0.018274
+[router] step 1220 (tokens=78080): baseline_nll=8.4718, last_nll=7.6380, advantage=+0.8508, cf=34964, max_update_norm=0.018608
+[router] step 1230 (tokens=78720): baseline_nll=8.5280, last_nll=8.7845, advantage=-0.2617, cf=35240, max_update_norm=0.018766
+[router] step 1240 (tokens=79360): baseline_nll=8.4646, last_nll=8.6234, advantage=-0.1620, cf=35523, max_update_norm=0.018641
+[router] step 1250 (tokens=80000): baseline_nll=8.4877, last_nll=9.1985, advantage=-0.7253, cf=35843, max_update_norm=0.017742
+[router] step 1260 (tokens=80640): baseline_nll=8.4797, last_nll=8.1456, advantage=+0.3410, cf=36133, max_update_norm=0.018400
+[router] step 1270 (tokens=81280): baseline_nll=8.5459, last_nll=9.2970, advantage=-0.7664, cf=36420, max_update_norm=0.017373
+[router] step 1280 (tokens=81920): baseline_nll=8.5132, last_nll=9.0522, advantage=-0.5500, cf=36710, max_update_norm=0.017398
+[router] step 1290 (tokens=82560): baseline_nll=8.4822, last_nll=8.6337, advantage=-0.1546, cf=37016, max_update_norm=0.018838
+[router] step 1300 (tokens=83200): baseline_nll=8.5398, last_nll=9.0641, advantage=-0.5350, cf=37325, max_update_norm=0.017996
+[router] step 1310 (tokens=83840): baseline_nll=8.4684, last_nll=8.0934, advantage=+0.3827, cf=37633, max_update_norm=0.017499
+[router] step 1320 (tokens=84480): baseline_nll=8.5354, last_nll=8.4213, advantage=+0.1164, cf=37906, max_update_norm=0.020099
+[router] step 1330 (tokens=85120): baseline_nll=8.4815, last_nll=7.8898, advantage=+0.6037, cf=38171, max_update_norm=0.019164
+[router] step 1340 (tokens=85760): baseline_nll=8.5844, last_nll=8.7429, advantage=-0.1617, cf=38464, max_update_norm=0.019007
+[router] step 1350 (tokens=86400): baseline_nll=8.4638, last_nll=8.9773, advantage=-0.5239, cf=38743, max_update_norm=0.018953
+[router] step 1360 (tokens=87040): baseline_nll=8.4842, last_nll=9.1574, advantage=-0.6870, cf=39045, max_update_norm=0.018932
+[router] step 1370 (tokens=87680): baseline_nll=8.5512, last_nll=8.8291, advantage=-0.2836, cf=39304, max_update_norm=0.019114
+[router] step 1380 (tokens=88320): baseline_nll=8.5323, last_nll=9.6053, advantage=-1.0950, cf=39580, max_update_norm=0.018981
+[router] step 1390 (tokens=88960): baseline_nll=8.6153, last_nll=8.7753, advantage=-0.1633, cf=39864, max_update_norm=0.019401
+[router] step 1400 (tokens=89600): baseline_nll=8.5766, last_nll=8.3491, advantage=+0.2322, cf=40163, max_update_norm=0.017728
+[router] step 1410 (tokens=90240): baseline_nll=8.5167, last_nll=7.6008, advantage=+0.9345, cf=40441, max_update_norm=0.018829
+[router] step 1420 (tokens=90880): baseline_nll=8.4724, last_nll=8.6546, advantage=-0.1859, cf=40714, max_update_norm=0.018864
+[router] step 1430 (tokens=91520): baseline_nll=8.4854, last_nll=8.9556, advantage=-0.4798, cf=41004, max_update_norm=0.018106
+[router] step 1440 (tokens=92160): baseline_nll=8.4228, last_nll=8.7803, advantage=-0.3647, cf=41294, max_update_norm=0.019746
+[router] step 1450 (tokens=92800): baseline_nll=8.5134, last_nll=8.7265, advantage=-0.2174, cf=41572, max_update_norm=0.019152
+[router] step 1460 (tokens=93440): baseline_nll=8.5637, last_nll=8.2918, advantage=+0.2775, cf=41855, max_update_norm=0.018395
+[router] step 1470 (tokens=94080): baseline_nll=8.5101, last_nll=7.9702, advantage=+0.5509, cf=42158, max_update_norm=0.018579
+[router] step 1480 (tokens=94720): baseline_nll=8.4720, last_nll=8.6763, advantage=-0.2085, cf=42427, max_update_norm=0.017875
+[router] step 1490 (tokens=95360): baseline_nll=8.5359, last_nll=7.9927, advantage=+0.5543, cf=42676, max_update_norm=0.019003
+[router] step 1500 (tokens=96000): baseline_nll=8.5686, last_nll=9.1494, advantage=-0.5927, cf=42963, max_update_norm=0.017651
+[router] step 1510 (tokens=96640): baseline_nll=8.5698, last_nll=7.8550, advantage=+0.7295, cf=43237, max_update_norm=0.017426
+[router] step 1520 (tokens=97280): baseline_nll=8.4193, last_nll=7.9590, advantage=+0.4697, cf=43507, max_update_norm=0.018747
+[router] step 1530 (tokens=97920): baseline_nll=8.5369, last_nll=7.9290, advantage=+0.6203, cf=43783, max_update_norm=0.019154
+[router] step 1540 (tokens=98560): baseline_nll=8.5096, last_nll=8.3685, advantage=+0.1440, cf=44042, max_update_norm=0.017022
+[router] step 1550 (tokens=99200): baseline_nll=8.5309, last_nll=8.6780, advantage=-0.1500, cf=44324, max_update_norm=0.018721
+[router] step 1560 (tokens=99840): baseline_nll=8.4141, last_nll=8.3338, advantage=+0.0820, cf=44620, max_update_norm=0.017533
+[router] step 1570 (tokens=100480): baseline_nll=8.5170, last_nll=8.4305, advantage=+0.0883, cf=44911, max_update_norm=0.019025
+[router] step 1580 (tokens=101120): baseline_nll=8.5081, last_nll=9.3375, advantage=-0.8464, cf=45224, max_update_norm=0.018778
+[router] step 1590 (tokens=101760): baseline_nll=8.5303, last_nll=8.7100, advantage=-0.1833, cf=45521, max_update_norm=0.019759
+[router] step 1600 (tokens=102400): baseline_nll=8.4723, last_nll=8.6145, advantage=-0.1452, cf=45809, max_update_norm=0.019459
+[router] step 1610 (tokens=103040): baseline_nll=8.5282, last_nll=9.0610, advantage=-0.5437, cf=46111, max_update_norm=0.017862
+[router] step 1620 (tokens=103680): baseline_nll=8.5880, last_nll=8.8568, advantage=-0.2743, cf=46393, max_update_norm=0.018082
+[router] step 1630 (tokens=104320): baseline_nll=8.6070, last_nll=8.1731, advantage=+0.4427, cf=46663, max_update_norm=0.019800
+[router] step 1640 (tokens=104960): baseline_nll=8.5905, last_nll=9.1440, advantage=-0.5648, cf=46967, max_update_norm=0.018440
+[router] step 1650 (tokens=105600): baseline_nll=8.5277, last_nll=7.9463, advantage=+0.5933, cf=47282, max_update_norm=0.018335
+[router] step 1660 (tokens=106240): baseline_nll=8.5065, last_nll=8.3716, advantage=+0.1376, cf=47563, max_update_norm=0.018101
+[router] step 1670 (tokens=106880): baseline_nll=8.4337, last_nll=8.5935, advantage=-0.1631, cf=47844, max_update_norm=0.018746
+[router] step 1680 (tokens=107520): baseline_nll=8.6102, last_nll=9.0526, advantage=-0.4514, cf=48136, max_update_norm=0.018968
+[router] step 1690 (tokens=108160): baseline_nll=8.6034, last_nll=9.0012, advantage=-0.4059, cf=48446, max_update_norm=0.019615
+[router] step 1700 (tokens=108800): baseline_nll=8.4672, last_nll=8.2816, advantage=+0.1894, cf=48722, max_update_norm=0.019306
+[router] step 1710 (tokens=109440): baseline_nll=8.5364, last_nll=8.8538, advantage=-0.3238, cf=48978, max_update_norm=0.018578
+[router] step 1720 (tokens=110080): baseline_nll=8.4925, last_nll=6.9495, advantage=+1.5745, cf=49285, max_update_norm=0.017793
+[router] step 1730 (tokens=110720): baseline_nll=8.5407, last_nll=8.5298, advantage=+0.0112, cf=49581, max_update_norm=0.019489
+[router] step 1740 (tokens=111360): baseline_nll=8.4868, last_nll=8.7779, advantage=-0.2970, cf=49888, max_update_norm=0.019039
+[router] step 1750 (tokens=112000): baseline_nll=8.5252, last_nll=8.7621, advantage=-0.2418, cf=50162, max_update_norm=0.018244
+[router] step 1760 (tokens=112640): baseline_nll=8.4905, last_nll=8.5661, advantage=-0.0771, cf=50442, max_update_norm=0.019125
+[router] step 1770 (tokens=113280): baseline_nll=8.4628, last_nll=8.7191, advantage=-0.2615, cf=50712, max_update_norm=0.018745
+[router] step 1780 (tokens=113920): baseline_nll=8.4941, last_nll=8.9452, advantage=-0.4603, cf=51008, max_update_norm=0.019412
+[router] step 1790 (tokens=114560): baseline_nll=8.5366, last_nll=8.4753, advantage=+0.0626, cf=51302, max_update_norm=0.019891
+[router] step 1800 (tokens=115200): baseline_nll=8.4889, last_nll=7.5505, advantage=+0.9575, cf=51588, max_update_norm=0.018532
+[router] step 1810 (tokens=115840): baseline_nll=8.5147, last_nll=7.8660, advantage=+0.6620, cf=51883, max_update_norm=0.016892
+[router] step 1820 (tokens=116480): baseline_nll=8.6064, last_nll=7.6133, advantage=+1.0134, cf=52159, max_update_norm=0.017528
+[router] step 1830 (tokens=117120): baseline_nll=8.5282, last_nll=8.7421, advantage=-0.2183, cf=52460, max_update_norm=0.018838
+[router] step 1840 (tokens=117760): baseline_nll=8.4772, last_nll=8.4320, advantage=+0.0462, cf=52740, max_update_norm=0.018104
+[router] step 1850 (tokens=118400): baseline_nll=8.4534, last_nll=8.6788, advantage=-0.2301, cf=53006, max_update_norm=0.017661
+[router] step 1860 (tokens=119040): baseline_nll=8.4875, last_nll=7.9534, advantage=+0.5449, cf=53284, max_update_norm=0.018693
+[router] step 1870 (tokens=119680): baseline_nll=8.4888, last_nll=8.2327, advantage=+0.2612, cf=53610, max_update_norm=0.018622
+[router] step 1880 (tokens=120320): baseline_nll=8.5272, last_nll=8.8283, advantage=-0.3072, cf=53894, max_update_norm=0.018785
+[router] step 1890 (tokens=120960): baseline_nll=8.4858, last_nll=8.4936, advantage=-0.0079, cf=54172, max_update_norm=0.018295
+[router] step 1900 (tokens=121600): baseline_nll=8.5305, last_nll=8.4834, advantage=+0.0480, cf=54477, max_update_norm=0.019725
+[router] step 1910 (tokens=122240): baseline_nll=8.4950, last_nll=7.7086, advantage=+0.8024, cf=54783, max_update_norm=0.020172
+[router] step 1920 (tokens=122880): baseline_nll=8.5571, last_nll=7.9021, advantage=+0.6684, cf=55074, max_update_norm=0.020826
+[router] step 1930 (tokens=123520): baseline_nll=8.6151, last_nll=9.1486, advantage=-0.5444, cf=55387, max_update_norm=0.018549
+[router] step 1940 (tokens=124160): baseline_nll=8.5464, last_nll=8.7499, advantage=-0.2077, cf=55672, max_update_norm=0.017940
+[router] step 1950 (tokens=124800): baseline_nll=8.5892, last_nll=8.0601, advantage=+0.5399, cf=55962, max_update_norm=0.018400
+[router] step 1960 (tokens=125440): baseline_nll=8.5117, last_nll=7.9692, advantage=+0.5536, cf=56271, max_update_norm=0.019517
+[router] step 1970 (tokens=126080): baseline_nll=8.4918, last_nll=8.5965, advantage=-0.1068, cf=56545, max_update_norm=0.018161
+[router] step 1980 (tokens=126720): baseline_nll=8.4468, last_nll=8.4907, advantage=-0.0448, cf=56836, max_update_norm=0.018136
+[router] step 1990 (tokens=127360): baseline_nll=8.5596, last_nll=9.0027, advantage=-0.4521, cf=57142, max_update_norm=0.016827
+[router] step 2000 (tokens=128000): baseline_nll=8.5237, last_nll=8.1263, advantage=+0.4055, cf=57430, max_update_norm=0.017911
+[router] step 2010 (tokens=128640): baseline_nll=8.5899, last_nll=8.2172, advantage=+0.3803, cf=57704, max_update_norm=0.017193
+[router] step 2020 (tokens=129280): baseline_nll=8.5082, last_nll=7.6765, advantage=+0.8487, cf=57965, max_update_norm=0.018818
+[router] step 2030 (tokens=129920): baseline_nll=8.4069, last_nll=8.1181, advantage=+0.2948, cf=58260, max_update_norm=0.020556
+[router] step 2040 (tokens=130560): baseline_nll=8.5694, last_nll=9.1784, advantage=-0.6214, cf=58537, max_update_norm=0.017873
+[router] step 2050 (tokens=131200): baseline_nll=8.5569, last_nll=8.7151, advantage=-0.1615, cf=58799, max_update_norm=0.018088
+[router] step 2060 (tokens=131840): baseline_nll=8.4865, last_nll=8.6639, advantage=-0.1810, cf=59098, max_update_norm=0.018164
+[router] step 2070 (tokens=132480): baseline_nll=8.4797, last_nll=7.8866, advantage=+0.6052, cf=59389, max_update_norm=0.017090
+[router] step 2080 (tokens=133120): baseline_nll=8.5930, last_nll=8.1354, advantage=+0.4669, cf=59693, max_update_norm=0.017682
+[router] step 2090 (tokens=133760): baseline_nll=8.5155, last_nll=8.5745, advantage=-0.0601, cf=60005, max_update_norm=0.017740
+[router] step 2100 (tokens=134400): baseline_nll=8.5218, last_nll=8.9077, advantage=-0.3937, cf=60306, max_update_norm=0.018247
+[router] step 2110 (tokens=135040): baseline_nll=8.5606, last_nll=8.4712, advantage=+0.0912, cf=60601, max_update_norm=0.018753
+[router] step 2120 (tokens=135680): baseline_nll=8.4850, last_nll=7.4407, advantage=+1.0656, cf=60901, max_update_norm=0.018863
+[router] step 2130 (tokens=136320): baseline_nll=8.4218, last_nll=8.7136, advantage=-0.2977, cf=61168, max_update_norm=0.020758
+[router] step 2140 (tokens=136960): baseline_nll=8.5374, last_nll=7.9952, advantage=+0.5533, cf=61452, max_update_norm=0.017517
+[router] step 2150 (tokens=137600): baseline_nll=8.4886, last_nll=8.5831, advantage=-0.0965, cf=61742, max_update_norm=0.018944
+[router] step 2160 (tokens=138240): baseline_nll=8.5649, last_nll=9.8679, advantage=-1.3296, cf=62017, max_update_norm=0.018264
+[router] step 2170 (tokens=138880): baseline_nll=8.4904, last_nll=9.3007, advantage=-0.8268, cf=62303, max_update_norm=0.017014
+[router] step 2180 (tokens=139520): baseline_nll=8.5277, last_nll=8.9075, advantage=-0.3876, cf=62608, max_update_norm=0.017899
+[router] step 2190 (tokens=140160): baseline_nll=8.5029, last_nll=8.7151, advantage=-0.2165, cf=62864, max_update_norm=0.018165
+[router] step 2200 (tokens=140800): baseline_nll=8.6113, last_nll=9.2292, advantage=-0.6305, cf=63161, max_update_norm=0.016943
+[router] step 2210 (tokens=141440): baseline_nll=8.5586, last_nll=9.2094, advantage=-0.6641, cf=63453, max_update_norm=0.018296
+[router] step 2220 (tokens=142080): baseline_nll=8.5476, last_nll=9.0135, advantage=-0.4755, cf=63729, max_update_norm=0.018885
+[router] step 2230 (tokens=142720): baseline_nll=8.4464, last_nll=7.7253, advantage=+0.7358, cf=64013, max_update_norm=0.018883
+[router] step 2240 (tokens=143360): baseline_nll=8.5318, last_nll=8.9785, advantage=-0.4558, cf=64309, max_update_norm=0.019742
+[router] step 2250 (tokens=144000): baseline_nll=8.5262, last_nll=8.4082, advantage=+0.1204, cf=64588, max_update_norm=0.017677
+[router] step 2260 (tokens=144640): baseline_nll=8.6394, last_nll=8.5935, advantage=+0.0468, cf=64896, max_update_norm=0.017826
+[router] step 2270 (tokens=145280): baseline_nll=8.5404, last_nll=8.4198, advantage=+0.1231, cf=65197, max_update_norm=0.017293
+[router] step 2280 (tokens=145920): baseline_nll=8.4356, last_nll=8.5320, advantage=-0.0984, cf=65497, max_update_norm=0.018417
+[router] step 2290 (tokens=146560): baseline_nll=8.5182, last_nll=9.1803, advantage=-0.6756, cf=65807, max_update_norm=0.018219
+[router] step 2300 (tokens=147200): baseline_nll=8.5864, last_nll=8.7688, advantage=-0.1861, cf=66110, max_update_norm=0.019755
+[router] step 2310 (tokens=147840): baseline_nll=8.3972, last_nll=8.2771, advantage=+0.1226, cf=66374, max_update_norm=0.020541
+[router] step 2320 (tokens=148480): baseline_nll=8.5295, last_nll=8.2257, advantage=+0.3100, cf=66683, max_update_norm=0.018657
+[router] step 2330 (tokens=149120): baseline_nll=8.5318, last_nll=9.4032, advantage=-0.8891, cf=66961, max_update_norm=0.018707
+[router] step 2340 (tokens=149760): baseline_nll=8.4610, last_nll=9.1000, advantage=-0.6520, cf=67246, max_update_norm=0.018180
+[router] step 2350 (tokens=150400): baseline_nll=8.4940, last_nll=8.3072, advantage=+0.1906, cf=67517, max_update_norm=0.019912
+[router] step 2360 (tokens=151040): baseline_nll=8.6195, last_nll=7.8195, advantage=+0.8163, cf=67797, max_update_norm=0.016694
+[router] step 2370 (tokens=151680): baseline_nll=8.4776, last_nll=8.5324, advantage=-0.0559, cf=68062, max_update_norm=0.017169
+[router] step 2380 (tokens=152320): baseline_nll=8.5178, last_nll=8.3834, advantage=+0.1371, cf=68341, max_update_norm=0.019074
+[router] step 2390 (tokens=152960): baseline_nll=8.5974, last_nll=8.8364, advantage=-0.2439, cf=68618, max_update_norm=0.018023
+[router] step 2400 (tokens=153600): baseline_nll=8.5079, last_nll=8.2615, advantage=+0.2514, cf=68897, max_update_norm=0.019521
+[router] step 2410 (tokens=154240): baseline_nll=8.4708, last_nll=8.3516, advantage=+0.1217, cf=69185, max_update_norm=0.019754
+[router] step 2420 (tokens=154880): baseline_nll=8.4253, last_nll=9.0647, advantage=-0.6524, cf=69469, max_update_norm=0.018282
+[router] step 2430 (tokens=155520): baseline_nll=8.4675, last_nll=8.7534, advantage=-0.2917, cf=69778, max_update_norm=0.017963
+[router] step 2440 (tokens=156160): baseline_nll=8.5099, last_nll=8.8471, advantage=-0.3441, cf=70040, max_update_norm=0.018053
+[router] step 2450 (tokens=156800): baseline_nll=8.5896, last_nll=8.9642, advantage=-0.3823, cf=70337, max_update_norm=0.018003
+[router] step 2460 (tokens=157440): baseline_nll=8.6049, last_nll=9.1651, advantage=-0.5716, cf=70612, max_update_norm=0.018309
+[router] step 2470 (tokens=158080): baseline_nll=8.4667, last_nll=8.2595, advantage=+0.2114, cf=70890, max_update_norm=0.017889
+[router] step 2480 (tokens=158720): baseline_nll=8.4701, last_nll=7.3643, advantage=+1.1283, cf=71199, max_update_norm=0.017472
+[router] step 2490 (tokens=159360): baseline_nll=8.4461, last_nll=8.8062, advantage=-0.3675, cf=71492, max_update_norm=0.018479
+[router] step 2500 (tokens=160000): baseline_nll=8.4958, last_nll=7.6403, advantage=+0.8730, cf=71774, max_update_norm=0.017857
+[router] step 2510 (tokens=160640): baseline_nll=8.5296, last_nll=9.5724, advantage=-1.0641, cf=72054, max_update_norm=0.017798
+[router] step 2520 (tokens=161280): baseline_nll=8.4078, last_nll=8.1750, advantage=+0.2376, cf=72342, max_update_norm=0.018814
+[router] step 2530 (tokens=161920): baseline_nll=8.4832, last_nll=7.8619, advantage=+0.6340, cf=72605, max_update_norm=0.018545
+[router] step 2540 (tokens=162560): baseline_nll=8.4820, last_nll=7.5461, advantage=+0.9550, cf=72912, max_update_norm=0.017661
+[router] step 2550 (tokens=163200): baseline_nll=8.4963, last_nll=8.7524, advantage=-0.2613, cf=73206, max_update_norm=0.017913
+[router] step 2560 (tokens=163840): baseline_nll=8.4765, last_nll=8.4898, advantage=-0.0135, cf=73503, max_update_norm=0.018026
+[router] step 2570 (tokens=164480): baseline_nll=8.5329, last_nll=8.0608, advantage=+0.4817, cf=73820, max_update_norm=0.018041
+[router] step 2580 (tokens=165120): baseline_nll=8.5248, last_nll=7.9112, advantage=+0.6261, cf=74122, max_update_norm=0.016897
+[router] step 2590 (tokens=165760): baseline_nll=8.6038, last_nll=8.6810, advantage=-0.0788, cf=74393, max_update_norm=0.019261
+[router] step 2600 (tokens=166400): baseline_nll=8.5100, last_nll=8.3600, advantage=+0.1531, cf=74703, max_update_norm=0.017898
+[router] step 2610 (tokens=167040): baseline_nll=8.4740, last_nll=8.5078, advantage=-0.0345, cf=74971, max_update_norm=0.017473
+[router] step 2620 (tokens=167680): baseline_nll=8.6383, last_nll=8.7768, advantage=-0.1413, cf=75263, max_update_norm=0.020090
+[router] step 2630 (tokens=168320): baseline_nll=8.4900, last_nll=8.5136, advantage=-0.0240, cf=75537, max_update_norm=0.018236
+[router] step 2640 (tokens=168960): baseline_nll=8.5303, last_nll=8.8524, advantage=-0.3287, cf=75838, max_update_norm=0.017373
+[router] step 2650 (tokens=169600): baseline_nll=8.4025, last_nll=7.8027, advantage=+0.6120, cf=76123, max_update_norm=0.017108
+[router] step 2660 (tokens=170240): baseline_nll=8.5430, last_nll=8.2993, advantage=+0.2487, cf=76418, max_update_norm=0.017377
+[router] step 2670 (tokens=170880): baseline_nll=8.5465, last_nll=7.9184, advantage=+0.6409, cf=76705, max_update_norm=0.018575
+[router] step 2680 (tokens=171520): baseline_nll=8.5567, last_nll=8.1155, advantage=+0.4503, cf=76974, max_update_norm=0.018643
+[router] step 2690 (tokens=172160): baseline_nll=8.4435, last_nll=8.3474, advantage=+0.0981, cf=77252, max_update_norm=0.018068
+[router] step 2700 (tokens=172800): baseline_nll=8.4993, last_nll=8.2989, advantage=+0.2046, cf=77540, max_update_norm=0.019279
+[router] step 2710 (tokens=173440): baseline_nll=8.5424, last_nll=7.6098, advantage=+0.9516, cf=77853, max_update_norm=0.017612
+[router] step 2720 (tokens=174080): baseline_nll=8.4539, last_nll=8.2569, advantage=+0.2010, cf=78128, max_update_norm=0.018217
+[router] step 2730 (tokens=174720): baseline_nll=8.4475, last_nll=7.8004, advantage=+0.6602, cf=78421, max_update_norm=0.017239
+[router] step 2740 (tokens=175360): baseline_nll=8.4533, last_nll=8.6753, advantage=-0.2265, cf=78710, max_update_norm=0.017220
+[router] step 2750 (tokens=176000): baseline_nll=8.5946, last_nll=8.9727, advantage=-0.3858, cf=79002, max_update_norm=0.016910
+[router] step 2760 (tokens=176640): baseline_nll=8.5145, last_nll=7.8240, advantage=+0.7046, cf=79276, max_update_norm=0.018534
+[router] step 2770 (tokens=177280): baseline_nll=8.4767, last_nll=9.4740, advantage=-1.0177, cf=79569, max_update_norm=0.018829
+[router] step 2780 (tokens=177920): baseline_nll=8.5003, last_nll=9.4623, advantage=-0.9816, cf=79858, max_update_norm=0.019005
+[router] step 2790 (tokens=178560): baseline_nll=8.5509, last_nll=8.3560, advantage=+0.1988, cf=80147, max_update_norm=0.017915
+[router] step 2800 (tokens=179200): baseline_nll=8.5836, last_nll=8.1122, advantage=+0.4810, cf=80444, max_update_norm=0.017706
+[router] step 2810 (tokens=179840): baseline_nll=8.5069, last_nll=8.3855, advantage=+0.1239, cf=80714, max_update_norm=0.017335
+[router] step 2820 (tokens=180480): baseline_nll=8.4920, last_nll=8.2304, advantage=+0.2669, cf=80976, max_update_norm=0.018715
+[router] step 2830 (tokens=181120): baseline_nll=8.5507, last_nll=8.4533, advantage=+0.0994, cf=81249, max_update_norm=0.019192
+[router] step 2840 (tokens=181760): baseline_nll=8.4211, last_nll=7.8699, advantage=+0.5624, cf=81542, max_update_norm=0.018583
+[router] step 2850 (tokens=182400): baseline_nll=8.5330, last_nll=9.2191, advantage=-0.7001, cf=81806, max_update_norm=0.018499
+[router] step 2860 (tokens=183040): baseline_nll=8.4916, last_nll=8.5212, advantage=-0.0301, cf=82080, max_update_norm=0.018337
+[router] step 2870 (tokens=183680): baseline_nll=8.4731, last_nll=8.6804, advantage=-0.2116, cf=82384, max_update_norm=0.017452
+[router] step 2880 (tokens=184320): baseline_nll=8.5181, last_nll=9.2283, advantage=-0.7246, cf=82637, max_update_norm=0.017262
+[router] step 2890 (tokens=184960): baseline_nll=8.5155, last_nll=8.8276, advantage=-0.3184, cf=82938, max_update_norm=0.018102
+[router] step 2900 (tokens=185600): baseline_nll=8.5456, last_nll=8.5983, advantage=-0.0538, cf=83231, max_update_norm=0.018676
+[router] step 2910 (tokens=186240): baseline_nll=8.6255, last_nll=9.3028, advantage=-0.6912, cf=83547, max_update_norm=0.017552
+[router] step 2920 (tokens=186880): baseline_nll=8.5466, last_nll=8.2056, advantage=+0.3479, cf=83841, max_update_norm=0.019656
+[router] step 2930 (tokens=187520): baseline_nll=8.5282, last_nll=9.0695, advantage=-0.5523, cf=84088, max_update_norm=0.017692
+[router] step 2940 (tokens=188160): baseline_nll=8.5038, last_nll=8.4098, advantage=+0.0959, cf=84368, max_update_norm=0.017810
+[router] step 2950 (tokens=188800): baseline_nll=8.5256, last_nll=8.7590, advantage=-0.2382, cf=84629, max_update_norm=0.017076
+[router] step 2960 (tokens=189440): baseline_nll=8.5466, last_nll=8.1879, advantage=+0.3660, cf=84909, max_update_norm=0.017315
+[router] step 2970 (tokens=190080): baseline_nll=8.5033, last_nll=8.6753, advantage=-0.1755, cf=85207, max_update_norm=0.018079
+[router] step 2980 (tokens=190720): baseline_nll=8.5852, last_nll=8.3342, advantage=+0.2561, cf=85514, max_update_norm=0.017957
+[router] step 2990 (tokens=191360): baseline_nll=8.4333, last_nll=8.0674, advantage=+0.3733, cf=85807, max_update_norm=0.018745
+[router] step 3000 (tokens=192000): baseline_nll=8.5306, last_nll=8.3165, advantage=+0.2185, cf=86080, max_update_norm=0.018950
+[router] step 3010 (tokens=192640): baseline_nll=8.5338, last_nll=9.1049, advantage=-0.5828, cf=86382, max_update_norm=0.018931
+[router] step 3020 (tokens=193280): baseline_nll=8.4988, last_nll=8.8800, advantage=-0.3890, cf=86673, max_update_norm=0.019784
+[router] step 3030 (tokens=193920): baseline_nll=8.4258, last_nll=8.4839, advantage=-0.0593, cf=86986, max_update_norm=0.018065
+[router] step 3040 (tokens=194560): baseline_nll=8.5867, last_nll=8.1886, advantage=+0.4063, cf=87259, max_update_norm=0.019713
+[router] step 3050 (tokens=195200): baseline_nll=8.5243, last_nll=9.0779, advantage=-0.5649, cf=87537, max_update_norm=0.017737
+[router] step 3060 (tokens=195840): baseline_nll=8.4959, last_nll=9.5724, advantage=-1.0985, cf=87831, max_update_norm=0.016795
+[router] step 3070 (tokens=196480): baseline_nll=8.4600, last_nll=8.1006, advantage=+0.3667, cf=88124, max_update_norm=0.019127
+[router] step 3080 (tokens=197120): baseline_nll=8.5428, last_nll=7.1153, advantage=+1.4566, cf=88416, max_update_norm=0.018598
+[router] step 3090 (tokens=197760): baseline_nll=8.5558, last_nll=8.8406, advantage=-0.2906, cf=88680, max_update_norm=0.018136
+[router] step 3100 (tokens=198400): baseline_nll=8.4539, last_nll=8.9080, advantage=-0.4634, cf=88957, max_update_norm=0.019507
+[router] step 3110 (tokens=199040): baseline_nll=8.5880, last_nll=7.8743, advantage=+0.7283, cf=89261, max_update_norm=0.020154
+[router] step 3120 (tokens=199680): baseline_nll=8.5030, last_nll=8.4310, advantage=+0.0735, cf=89543, max_update_norm=0.019223
+[router] step 3130 (tokens=200320): baseline_nll=8.5730, last_nll=9.0655, advantage=-0.5025, cf=89826, max_update_norm=0.017900
+[router] step 3140 (tokens=200960): baseline_nll=8.5511, last_nll=8.6375, advantage=-0.0881, cf=90101, max_update_norm=0.017652
+[router] step 3150 (tokens=201600): baseline_nll=8.4523, last_nll=8.8580, advantage=-0.4141, cf=90387, max_update_norm=0.016965
+[router] step 3160 (tokens=202240): baseline_nll=8.4142, last_nll=8.6006, advantage=-0.1902, cf=90669, max_update_norm=0.017378
+[router] step 3170 (tokens=202880): baseline_nll=8.5148, last_nll=8.1143, advantage=+0.4086, cf=90964, max_update_norm=0.019249
+[router] step 3180 (tokens=203520): baseline_nll=8.4974, last_nll=7.7871, advantage=+0.7247, cf=91252, max_update_norm=0.019079
+[router] step 3190 (tokens=204160): baseline_nll=8.4055, last_nll=8.9862, advantage=-0.5925, cf=91536, max_update_norm=0.019374
+[router] step 3200 (tokens=204800): baseline_nll=8.5334, last_nll=7.7999, advantage=+0.7485, cf=91793, max_update_norm=0.017450
+[router] step 3210 (tokens=205440): baseline_nll=8.4751, last_nll=9.2993, advantage=-0.8411, cf=92075, max_update_norm=0.018039
+[router] step 3220 (tokens=206080): baseline_nll=8.5054, last_nll=8.9762, advantage=-0.4804, cf=92361, max_update_norm=0.018085
+[router] step 3230 (tokens=206720): baseline_nll=8.4120, last_nll=7.5969, advantage=+0.8317, cf=92636, max_update_norm=0.017164
+[router] step 3240 (tokens=207360): baseline_nll=8.4705, last_nll=8.2432, advantage=+0.2319, cf=92919, max_update_norm=0.018592
+[router] step 3250 (tokens=208000): baseline_nll=8.5435, last_nll=7.6720, advantage=+0.8893, cf=93218, max_update_norm=0.017840
+[router] step 3260 (tokens=208640): baseline_nll=8.5465, last_nll=9.0256, advantage=-0.4888, cf=93521, max_update_norm=0.019127
+[router] step 3270 (tokens=209280): baseline_nll=8.5961, last_nll=8.1628, advantage=+0.4422, cf=93810, max_update_norm=0.018287
+[router] step 3280 (tokens=209920): baseline_nll=8.5933, last_nll=7.7620, advantage=+0.8483, cf=94085, max_update_norm=0.017640
+[router] step 3290 (tokens=210560): baseline_nll=8.5233, last_nll=8.2012, advantage=+0.3287, cf=94364, max_update_norm=0.018228
+[router] step 3300 (tokens=211200): baseline_nll=8.5298, last_nll=8.2636, advantage=+0.2716, cf=94659, max_update_norm=0.018424
+[router] step 3310 (tokens=211840): baseline_nll=8.5496, last_nll=9.5429, advantage=-1.0136, cf=94958, max_update_norm=0.017677
+[router] step 3320 (tokens=212480): baseline_nll=8.5909, last_nll=8.5173, advantage=+0.0751, cf=95240, max_update_norm=0.019086
+[router] step 3330 (tokens=213120): baseline_nll=8.5150, last_nll=8.7177, advantage=-0.2068, cf=95527, max_update_norm=0.019260
+[router] step 3340 (tokens=213760): baseline_nll=8.6223, last_nll=7.9597, advantage=+0.6761, cf=95828, max_update_norm=0.017782
+[router] step 3350 (tokens=214400): baseline_nll=8.4800, last_nll=8.7018, advantage=-0.2264, cf=96137, max_update_norm=0.018861
+[router] step 3360 (tokens=215040): baseline_nll=8.5015, last_nll=8.6217, advantage=-0.1226, cf=96408, max_update_norm=0.017987
+[router] step 3370 (tokens=215680): baseline_nll=8.5038, last_nll=9.1167, advantage=-0.6253, cf=96679, max_update_norm=0.018116
+[router] step 3380 (tokens=216320): baseline_nll=8.3643, last_nll=7.1989, advantage=+1.1891, cf=96969, max_update_norm=0.019007
+[router] step 3390 (tokens=216960): baseline_nll=8.4590, last_nll=9.3193, advantage=-0.8778, cf=97261, max_update_norm=0.018113
+[router] step 3400 (tokens=217600): baseline_nll=8.4734, last_nll=8.8638, advantage=-0.3984, cf=97557, max_update_norm=0.017910
+[router] step 3410 (tokens=218240): baseline_nll=8.4757, last_nll=8.8393, advantage=-0.3710, cf=97876, max_update_norm=0.018988
+[router] step 3420 (tokens=218880): baseline_nll=8.5343, last_nll=9.7088, advantage=-1.1985, cf=98157, max_update_norm=0.018385
+[router] step 3430 (tokens=219520): baseline_nll=8.4225, last_nll=8.0112, advantage=+0.4197, cf=98441, max_update_norm=0.017980
+[router] step 3440 (tokens=220160): baseline_nll=8.4845, last_nll=7.5309, advantage=+0.9731, cf=98736, max_update_norm=0.017763
+[router] step 3450 (tokens=220800): baseline_nll=8.5774, last_nll=9.3880, advantage=-0.8272, cf=99005, max_update_norm=0.019300
+[router] step 3460 (tokens=221440): baseline_nll=8.5430, last_nll=9.2971, advantage=-0.7696, cf=99294, max_update_norm=0.017965
+[router] step 3470 (tokens=222080): baseline_nll=8.5482, last_nll=8.9536, advantage=-0.4137, cf=99590, max_update_norm=0.017696
+[router] step 3480 (tokens=222720): baseline_nll=8.6092, last_nll=9.4172, advantage=-0.8244, cf=99857, max_update_norm=0.017917
+[router] step 3490 (tokens=223360): baseline_nll=8.4862, last_nll=8.1063, advantage=+0.3876, cf=100108, max_update_norm=0.020205
+[router] step 3500 (tokens=224000): baseline_nll=8.5169, last_nll=8.4499, advantage=+0.0683, cf=100415, max_update_norm=0.018009
+[router] step 3510 (tokens=224640): baseline_nll=8.4617, last_nll=8.6240, advantage=-0.1656, cf=100725, max_update_norm=0.017796
+[router] step 3520 (tokens=225280): baseline_nll=8.5190, last_nll=9.1161, advantage=-0.6092, cf=101037, max_update_norm=0.022628
+[router] step 3530 (tokens=225920): baseline_nll=8.4764, last_nll=8.5428, advantage=-0.0677, cf=101348, max_update_norm=0.019255
+[router] step 3540 (tokens=226560): baseline_nll=8.5334, last_nll=8.7259, advantage=-0.1964, cf=101636, max_update_norm=0.019248
+[router] step 3550 (tokens=227200): baseline_nll=8.6031, last_nll=7.9488, advantage=+0.6676, cf=101923, max_update_norm=0.016940
+[router] step 3560 (tokens=227840): baseline_nll=8.4907, last_nll=8.1753, advantage=+0.3218, cf=102241, max_update_norm=0.018946
+[router] step 3570 (tokens=228480): baseline_nll=8.4207, last_nll=8.3051, advantage=+0.1180, cf=102537, max_update_norm=0.018282
+[router] step 3580 (tokens=229120): baseline_nll=8.5423, last_nll=8.0111, advantage=+0.5420, cf=102835, max_update_norm=0.018656
+[router] step 3590 (tokens=229760): baseline_nll=8.5919, last_nll=9.0711, advantage=-0.4890, cf=103120, max_update_norm=0.019967
+[router] step 3600 (tokens=230400): baseline_nll=8.5225, last_nll=8.6426, advantage=-0.1225, cf=103368, max_update_norm=0.018080
+[router] step 3610 (tokens=231040): baseline_nll=8.5554, last_nll=8.9284, advantage=-0.3806, cf=103657, max_update_norm=0.018116
+[router] step 3620 (tokens=231680): baseline_nll=8.4242, last_nll=7.9030, advantage=+0.5318, cf=103931, max_update_norm=0.017965
+[router] step 3630 (tokens=232320): baseline_nll=8.4883, last_nll=9.2802, advantage=-0.8080, cf=104218, max_update_norm=0.019038
+[router] step 3640 (tokens=232960): baseline_nll=8.4378, last_nll=8.7842, advantage=-0.3534, cf=104527, max_update_norm=0.018338
+[router] step 3650 (tokens=233600): baseline_nll=8.5392, last_nll=8.1197, advantage=+0.4281, cf=104840, max_update_norm=0.019412
+[router] step 3660 (tokens=234240): baseline_nll=8.4847, last_nll=8.7639, advantage=-0.2850, cf=105124, max_update_norm=0.018882
+[router] step 3670 (tokens=234880): baseline_nll=8.4609, last_nll=7.7860, advantage=+0.6887, cf=105425, max_update_norm=0.019139
+[router] step 3680 (tokens=235520): baseline_nll=8.4231, last_nll=7.8310, advantage=+0.6042, cf=105748, max_update_norm=0.019113
+[router] step 3690 (tokens=236160): baseline_nll=8.5305, last_nll=7.7423, advantage=+0.8042, cf=106018, max_update_norm=0.018649
+[router] step 3700 (tokens=236800): baseline_nll=8.6268, last_nll=8.5283, advantage=+0.1005, cf=106294, max_update_norm=0.020055
+[router] step 3710 (tokens=237440): baseline_nll=8.5282, last_nll=8.9035, advantage=-0.3829, cf=106571, max_update_norm=0.019250
+[router] step 3720 (tokens=238080): baseline_nll=8.6112, last_nll=8.2324, advantage=+0.3865, cf=106883, max_update_norm=0.018071
+[router] step 3730 (tokens=238720): baseline_nll=8.4325, last_nll=7.1818, advantage=+1.2763, cf=107174, max_update_norm=0.016357
+[router] step 3740 (tokens=239360): baseline_nll=8.5197, last_nll=7.9567, advantage=+0.5745, cf=107492, max_update_norm=0.017722
+[router] step 3750 (tokens=240000): baseline_nll=8.4786, last_nll=8.2668, advantage=+0.2161, cf=107789, max_update_norm=0.018265
+[router] step 3760 (tokens=240640): baseline_nll=8.4842, last_nll=7.9236, advantage=+0.5720, cf=108093, max_update_norm=0.018739
+[router] step 3770 (tokens=241280): baseline_nll=8.5739, last_nll=9.0500, advantage=-0.4859, cf=108362, max_update_norm=0.016841
+[router] step 3780 (tokens=241920): baseline_nll=8.5308, last_nll=8.9350, advantage=-0.4125, cf=108668, max_update_norm=0.018207
+[router] step 3790 (tokens=242560): baseline_nll=8.4805, last_nll=9.0025, advantage=-0.5327, cf=108989, max_update_norm=0.018516
+[router] step 3800 (tokens=243200): baseline_nll=8.4769, last_nll=8.0645, advantage=+0.4208, cf=109260, max_update_norm=0.017361
+[router] step 3810 (tokens=243840): baseline_nll=8.5383, last_nll=8.7321, advantage=-0.1977, cf=109571, max_update_norm=0.018267
+[router] step 3820 (tokens=244480): baseline_nll=8.5874, last_nll=9.1114, advantage=-0.5348, cf=109854, max_update_norm=0.016780
+[router] step 3830 (tokens=245120): baseline_nll=8.3801, last_nll=9.4118, advantage=-1.0527, cf=110122, max_update_norm=0.017887
+[router] step 3840 (tokens=245760): baseline_nll=8.4887, last_nll=7.7542, advantage=+0.7495, cf=110424, max_update_norm=0.017480
+[router] step 3850 (tokens=246400): baseline_nll=8.4978, last_nll=8.7426, advantage=-0.2497, cf=110729, max_update_norm=0.017561
+[router] step 3860 (tokens=247040): baseline_nll=8.5562, last_nll=9.0231, advantage=-0.4764, cf=111034, max_update_norm=0.018312
+[router] step 3870 (tokens=247680): baseline_nll=8.4863, last_nll=8.0722, advantage=+0.4226, cf=111313, max_update_norm=0.018200
+[router] step 3880 (tokens=248320): baseline_nll=8.4312, last_nll=8.4906, advantage=-0.0606, cf=111616, max_update_norm=0.017833
+[router] step 3890 (tokens=248960): baseline_nll=8.4825, last_nll=7.7672, advantage=+0.7299, cf=111909, max_update_norm=0.019558
+[router] step 3900 (tokens=249600): baseline_nll=8.4480, last_nll=9.1751, advantage=-0.7420, cf=112180, max_update_norm=0.019066
+[router] step 3910 (tokens=250240): baseline_nll=8.4512, last_nll=8.6083, advantage=-0.1603, cf=112450, max_update_norm=0.017763
+[router] step 3920 (tokens=250880): baseline_nll=8.3953, last_nll=9.1985, advantage=-0.8196, cf=112713, max_update_norm=0.019406
+[router] step 3930 (tokens=251520): baseline_nll=8.5852, last_nll=8.8103, advantage=-0.2297, cf=113020, max_update_norm=0.018764
+[router] step 3940 (tokens=252160): baseline_nll=8.5812, last_nll=8.1854, advantage=+0.4038, cf=113267, max_update_norm=0.019571
+[router] step 3950 (tokens=252800): baseline_nll=8.4125, last_nll=9.4745, advantage=-1.0837, cf=113575, max_update_norm=0.019246
+[router] step 3960 (tokens=253440): baseline_nll=8.5579, last_nll=8.1376, advantage=+0.4289, cf=113861, max_update_norm=0.019702
+[router] step 3970 (tokens=254080): baseline_nll=8.5148, last_nll=9.1376, advantage=-0.6355, cf=114161, max_update_norm=0.017914
+[router] step 3980 (tokens=254720): baseline_nll=8.5152, last_nll=8.7867, advantage=-0.2770, cf=114440, max_update_norm=0.017869
+[router] step 3990 (tokens=255360): baseline_nll=8.6123, last_nll=8.9869, advantage=-0.3823, cf=114743, max_update_norm=0.017615
+[router] step 4000 (tokens=256000): baseline_nll=8.5669, last_nll=9.3942, advantage=-0.8442, cf=115001, max_update_norm=0.017741
+[router] step 4010 (tokens=256640): baseline_nll=8.5397, last_nll=8.1773, advantage=+0.3698, cf=115312, max_update_norm=0.017559
+[router] step 4020 (tokens=257280): baseline_nll=8.4891, last_nll=8.2338, advantage=+0.2606, cf=115598, max_update_norm=0.018332
+[router] step 4030 (tokens=257920): baseline_nll=8.4587, last_nll=9.1319, advantage=-0.6869, cf=115888, max_update_norm=0.018769
+[router] step 4040 (tokens=258560): baseline_nll=8.5619, last_nll=8.6251, advantage=-0.0645, cf=116186, max_update_norm=0.018081
+[router] step 4050 (tokens=259200): baseline_nll=8.4511, last_nll=9.0707, advantage=-0.6322, cf=116436, max_update_norm=0.018343
+[router] step 4060 (tokens=259840): baseline_nll=8.4562, last_nll=8.7004, advantage=-0.2492, cf=116762, max_update_norm=0.018556
+[router] step 4070 (tokens=260480): baseline_nll=8.4823, last_nll=9.0632, advantage=-0.5927, cf=117042, max_update_norm=0.019244
+[router] step 4080 (tokens=261120): baseline_nll=8.4798, last_nll=8.4114, advantage=+0.0698, cf=117322, max_update_norm=0.018676
+[router] step 4090 (tokens=261760): baseline_nll=8.4852, last_nll=8.9025, advantage=-0.4258, cf=117649, max_update_norm=0.019096
+[router] step 4100 (tokens=262400): baseline_nll=8.5086, last_nll=9.3380, advantage=-0.8463, cf=117926, max_update_norm=0.019206
+[router] step 4110 (tokens=263040): baseline_nll=8.3945, last_nll=7.1573, advantage=+1.2624, cf=118221, max_update_norm=0.019482
+[router] step 4120 (tokens=263680): baseline_nll=8.4819, last_nll=8.7546, advantage=-0.2782, cf=118519, max_update_norm=0.019223
+[router] step 4130 (tokens=264320): baseline_nll=8.4851, last_nll=7.8338, advantage=+0.6646, cf=118807, max_update_norm=0.017752
+[router] step 4140 (tokens=264960): baseline_nll=8.4788, last_nll=8.5115, advantage=-0.0334, cf=119114, max_update_norm=0.017602
+[router] step 4150 (tokens=265600): baseline_nll=8.5442, last_nll=8.1322, advantage=+0.4204, cf=119388, max_update_norm=0.019513
+[router] step 4160 (tokens=266240): baseline_nll=8.5371, last_nll=7.5451, advantage=+1.0122, cf=119699, max_update_norm=0.018517
+[router] step 4170 (tokens=266880): baseline_nll=8.4683, last_nll=7.9164, advantage=+0.5631, cf=119975, max_update_norm=0.018058
+[router] step 4180 (tokens=267520): baseline_nll=8.5506, last_nll=8.3868, advantage=+0.1671, cf=120265, max_update_norm=0.019409
+[router] step 4190 (tokens=268160): baseline_nll=8.4984, last_nll=7.9469, advantage=+0.5627, cf=120537, max_update_norm=0.018108
+[router] step 4200 (tokens=268800): baseline_nll=8.4859, last_nll=8.0176, advantage=+0.4778, cf=120820, max_update_norm=0.017608
+[router] step 4210 (tokens=269440): baseline_nll=8.4866, last_nll=8.0420, advantage=+0.4537, cf=121111, max_update_norm=0.020727
+[router] step 4220 (tokens=270080): baseline_nll=8.5388, last_nll=8.8153, advantage=-0.2821, cf=121404, max_update_norm=0.018283
+[router] step 4230 (tokens=270720): baseline_nll=8.4998, last_nll=8.5689, advantage=-0.0706, cf=121688, max_update_norm=0.019168
+[router] step 4240 (tokens=271360): baseline_nll=8.4340, last_nll=9.2787, advantage=-0.8619, cf=121998, max_update_norm=0.018264
+[router] step 4250 (tokens=272000): baseline_nll=8.4873, last_nll=8.7604, advantage=-0.2786, cf=122285, max_update_norm=0.018289
+[router] step 4260 (tokens=272640): baseline_nll=8.5535, last_nll=8.7624, advantage=-0.2132, cf=122568, max_update_norm=0.017459
+[router] step 4270 (tokens=273280): baseline_nll=8.5606, last_nll=8.0279, advantage=+0.5437, cf=122854, max_update_norm=0.017497
+[router] step 4280 (tokens=273920): baseline_nll=8.5880, last_nll=7.3627, advantage=+1.2503, cf=123124, max_update_norm=0.017774
+[router] step 4290 (tokens=274560): baseline_nll=8.5096, last_nll=9.2259, advantage=-0.7310, cf=123416, max_update_norm=0.018512
+[router] step 4300 (tokens=275200): baseline_nll=8.5688, last_nll=7.9819, advantage=+0.5989, cf=123697, max_update_norm=0.017871
+[router] step 4310 (tokens=275840): baseline_nll=8.4976, last_nll=7.9807, advantage=+0.5274, cf=124014, max_update_norm=0.018439
+[router] step 4320 (tokens=276480): baseline_nll=8.5123, last_nll=9.2424, advantage=-0.7450, cf=124305, max_update_norm=0.019035
+[router] step 4330 (tokens=277120): baseline_nll=8.4989, last_nll=8.1547, advantage=+0.3512, cf=124568, max_update_norm=0.017627
+[router] step 4340 (tokens=277760): baseline_nll=8.4827, last_nll=8.2647, advantage=+0.2224, cf=124880, max_update_norm=0.017302
+[router] step 4350 (tokens=278400): baseline_nll=8.5460, last_nll=9.2129, advantage=-0.6805, cf=125136, max_update_norm=0.018173
+[router] step 4360 (tokens=279040): baseline_nll=8.4169, last_nll=8.3784, advantage=+0.0393, cf=125408, max_update_norm=0.018383
+[router] step 4370 (tokens=279680): baseline_nll=8.4943, last_nll=8.7351, advantage=-0.2458, cf=125693, max_update_norm=0.017542
+[router] step 4380 (tokens=280320): baseline_nll=8.4732, last_nll=8.0282, advantage=+0.4540, cf=125967, max_update_norm=0.017749
+[router] step 4390 (tokens=280960): baseline_nll=8.5698, last_nll=9.7920, advantage=-1.2472, cf=126257, max_update_norm=0.017472
+[router] step 4400 (tokens=281600): baseline_nll=8.4723, last_nll=7.6458, advantage=+0.8433, cf=126557, max_update_norm=0.020155
+[router] step 4410 (tokens=282240): baseline_nll=8.4255, last_nll=8.2560, advantage=+0.1729, cf=126871, max_update_norm=0.018477
+[router] step 4420 (tokens=282880): baseline_nll=8.5812, last_nll=8.5418, advantage=+0.0403, cf=127139, max_update_norm=0.017237
+[router] step 4430 (tokens=283520): baseline_nll=8.4542, last_nll=7.8999, advantage=+0.5656, cf=127438, max_update_norm=0.018072
+[router] step 4440 (tokens=284160): baseline_nll=8.4959, last_nll=9.7557, advantage=-1.2855, cf=127731, max_update_norm=0.017731
+[router] step 4450 (tokens=284800): baseline_nll=8.5297, last_nll=8.5065, advantage=+0.0236, cf=128001, max_update_norm=0.017816
+[router] step 4460 (tokens=285440): baseline_nll=8.5522, last_nll=8.7184, advantage=-0.1696, cf=128288, max_update_norm=0.018744
+[router] step 4470 (tokens=286080): baseline_nll=8.5310, last_nll=8.8219, advantage=-0.2969, cf=128586, max_update_norm=0.018160
+[router] step 4480 (tokens=286720): baseline_nll=8.4616, last_nll=8.4023, advantage=+0.0605, cf=128890, max_update_norm=0.018742
+[router] step 4490 (tokens=287360): baseline_nll=8.5078, last_nll=8.5519, advantage=-0.0450, cf=129186, max_update_norm=0.016275
+[router] step 4500 (tokens=288000): baseline_nll=8.4367, last_nll=8.4957, advantage=-0.0601, cf=129460, max_update_norm=0.018229
+[router] step 4510 (tokens=288640): baseline_nll=8.4857, last_nll=8.3904, advantage=+0.0972, cf=129755, max_update_norm=0.017437
+[router] step 4520 (tokens=289280): baseline_nll=8.5468, last_nll=8.9156, advantage=-0.3763, cf=130075, max_update_norm=0.018410
+[router] step 4530 (tokens=289920): baseline_nll=8.4457, last_nll=7.7093, advantage=+0.7514, cf=130341, max_update_norm=0.017395
+[router] step 4540 (tokens=290560): baseline_nll=8.5082, last_nll=9.4882, advantage=-1.0000, cf=130614, max_update_norm=0.016990
+[router] step 4550 (tokens=291200): baseline_nll=8.4565, last_nll=8.9490, advantage=-0.5026, cf=130900, max_update_norm=0.017926
+[router] step 4560 (tokens=291840): baseline_nll=8.4538, last_nll=7.7687, advantage=+0.6991, cf=131199, max_update_norm=0.017165
+[router] step 4570 (tokens=292480): baseline_nll=8.5375, last_nll=6.9212, advantage=+1.6493, cf=131528, max_update_norm=0.018027
+[router] step 4580 (tokens=293120): baseline_nll=8.5160, last_nll=7.8648, advantage=+0.6645, cf=131792, max_update_norm=0.018572
+[router] step 4590 (tokens=293760): baseline_nll=8.4843, last_nll=8.2464, advantage=+0.2428, cf=132071, max_update_norm=0.019244
+[router] step 4600 (tokens=294400): baseline_nll=8.4835, last_nll=9.8221, advantage=-1.3659, cf=132350, max_update_norm=0.017802
+[router] step 4610 (tokens=295040): baseline_nll=8.5030, last_nll=7.7829, advantage=+0.7348, cf=132622, max_update_norm=0.019150
+[router] step 4620 (tokens=295680): baseline_nll=8.5402, last_nll=7.7034, advantage=+0.8539, cf=132908, max_update_norm=0.018933
+[router] step 4630 (tokens=296320): baseline_nll=8.5582, last_nll=9.2887, advantage=-0.7454, cf=133199, max_update_norm=0.019332
+[router] step 4640 (tokens=296960): baseline_nll=8.4700, last_nll=8.8716, advantage=-0.4098, cf=133486, max_update_norm=0.018126
+[router] step 4650 (tokens=297600): baseline_nll=8.5338, last_nll=8.1620, advantage=+0.3794, cf=133765, max_update_norm=0.017329
+[router] step 4660 (tokens=298240): baseline_nll=8.4761, last_nll=8.3978, advantage=+0.0800, cf=134041, max_update_norm=0.017725
+[router] step 4670 (tokens=298880): baseline_nll=8.5011, last_nll=9.1012, advantage=-0.6123, cf=134339, max_update_norm=0.017213
+[router] step 4680 (tokens=299520): baseline_nll=8.4683, last_nll=8.6417, advantage=-0.1770, cf=134617, max_update_norm=0.018082
+[router] step 4690 (tokens=300160): baseline_nll=8.5317, last_nll=9.3535, advantage=-0.8386, cf=134908, max_update_norm=0.017680
+[router] step 4700 (tokens=300800): baseline_nll=8.5235, last_nll=8.9951, advantage=-0.4813, cf=135196, max_update_norm=0.017988
+[router] step 4710 (tokens=301440): baseline_nll=8.6008, last_nll=9.5827, advantage=-1.0019, cf=135484, max_update_norm=0.018574
+[router] step 4720 (tokens=302080): baseline_nll=8.5156, last_nll=8.5390, advantage=-0.0238, cf=135757, max_update_norm=0.018453
+[router] step 4730 (tokens=302720): baseline_nll=8.6712, last_nll=9.3183, advantage=-0.6603, cf=136053, max_update_norm=0.017434
+[router] step 4740 (tokens=303360): baseline_nll=8.5713, last_nll=8.2900, advantage=+0.2870, cf=136355, max_update_norm=0.017189
+[router] step 4750 (tokens=304000): baseline_nll=8.4373, last_nll=8.3530, advantage=+0.0860, cf=136643, max_update_norm=0.018613
+[router] step 4760 (tokens=304640): baseline_nll=8.5300, last_nll=7.7818, advantage=+0.7635, cf=136927, max_update_norm=0.018731
+[router] step 4770 (tokens=305280): baseline_nll=8.6187, last_nll=8.8402, advantage=-0.2260, cf=137254, max_update_norm=0.017524
+[router] step 4780 (tokens=305920): baseline_nll=8.4557, last_nll=8.2616, advantage=+0.1981, cf=137537, max_update_norm=0.018552
+[router] step 4790 (tokens=306560): baseline_nll=8.6136, last_nll=8.1405, advantage=+0.4827, cf=137810, max_update_norm=0.018045
+[router] step 4800 (tokens=307200): baseline_nll=8.5993, last_nll=8.9104, advantage=-0.3174, cf=138087, max_update_norm=0.017537
+[router] step 4810 (tokens=307840): baseline_nll=8.5195, last_nll=8.1405, advantage=+0.3867, cf=138380, max_update_norm=0.018291
+[router] step 4820 (tokens=308480): baseline_nll=8.4888, last_nll=9.7053, advantage=-1.2413, cf=138682, max_update_norm=0.017788
+[router] step 4830 (tokens=309120): baseline_nll=8.4975, last_nll=7.8308, advantage=+0.6803, cf=139001, max_update_norm=0.019276
+[router] step 4840 (tokens=309760): baseline_nll=8.4804, last_nll=8.1943, advantage=+0.2919, cf=139300, max_update_norm=0.018094
+[router] step 4850 (tokens=310400): baseline_nll=8.4177, last_nll=8.0758, advantage=+0.3489, cf=139571, max_update_norm=0.019703
+[router] step 4860 (tokens=311040): baseline_nll=8.4591, last_nll=8.3712, advantage=+0.0896, cf=139880, max_update_norm=0.018622
+[router] step 4870 (tokens=311680): baseline_nll=8.5088, last_nll=8.1010, advantage=+0.4162, cf=140174, max_update_norm=0.019714
+[router] step 4880 (tokens=312320): baseline_nll=8.4760, last_nll=9.2843, advantage=-0.8248, cf=140456, max_update_norm=0.019952
+[router] step 4890 (tokens=312960): baseline_nll=8.4983, last_nll=7.7206, advantage=+0.7936, cf=140750, max_update_norm=0.018190
+[router] step 4900 (tokens=313600): baseline_nll=8.4642, last_nll=9.0368, advantage=-0.5844, cf=141051, max_update_norm=0.018978
+[router] step 4910 (tokens=314240): baseline_nll=8.5633, last_nll=9.1339, advantage=-0.5823, cf=141336, max_update_norm=0.018736
+[router] step 4920 (tokens=314880): baseline_nll=8.4548, last_nll=7.6523, advantage=+0.8189, cf=141623, max_update_norm=0.019162
+[router] step 4930 (tokens=315520): baseline_nll=8.4924, last_nll=8.7896, advantage=-0.3032, cf=141883, max_update_norm=0.018662
+[router] step 4940 (tokens=316160): baseline_nll=8.5362, last_nll=8.7772, advantage=-0.2460, cf=142175, max_update_norm=0.018022
+[router] step 4950 (tokens=316800): baseline_nll=8.6415, last_nll=9.3826, advantage=-0.7562, cf=142481, max_update_norm=0.017266
+[router] step 4960 (tokens=317440): baseline_nll=8.4826, last_nll=9.6331, advantage=-1.1740, cf=142789, max_update_norm=0.017768
+[router] step 4970 (tokens=318080): baseline_nll=8.4859, last_nll=7.6811, advantage=+0.8213, cf=143087, max_update_norm=0.018442
+[router] step 4980 (tokens=318720): baseline_nll=8.5032, last_nll=8.9621, advantage=-0.4683, cf=143373, max_update_norm=0.019607
+[router] step 4990 (tokens=319360): baseline_nll=8.6568, last_nll=9.3968, advantage=-0.7551, cf=143659, max_update_norm=0.019220
+[router] step 5000 (tokens=320000): baseline_nll=8.5869, last_nll=8.3335, advantage=+0.2585, cf=143965, max_update_norm=0.017994
+[router] step 5010 (tokens=320640): baseline_nll=8.4438, last_nll=8.1021, advantage=+0.3487, cf=144230, max_update_norm=0.018191
+[router] step 5020 (tokens=321280): baseline_nll=8.4584, last_nll=8.9236, advantage=-0.4747, cf=144508, max_update_norm=0.018356
+[router] step 5030 (tokens=321920): baseline_nll=8.5488, last_nll=7.5402, advantage=+1.0293, cf=144801, max_update_norm=0.019127
+[router] step 5040 (tokens=322560): baseline_nll=8.5868, last_nll=8.4511, advantage=+0.1385, cf=145095, max_update_norm=0.019324
+[router] step 5050 (tokens=323200): baseline_nll=8.5721, last_nll=9.0204, advantage=-0.4575, cf=145404, max_update_norm=0.018094
+[router] step 5060 (tokens=323840): baseline_nll=8.4470, last_nll=8.6357, advantage=-0.1926, cf=145696, max_update_norm=0.018784
+[router] step 5070 (tokens=324480): baseline_nll=8.5458, last_nll=8.7976, advantage=-0.2570, cf=145986, max_update_norm=0.017987
+[router] step 5080 (tokens=325120): baseline_nll=8.5411, last_nll=8.7547, advantage=-0.2180, cf=146240, max_update_norm=0.016702
+[router] step 5090 (tokens=325760): baseline_nll=8.5778, last_nll=8.4246, advantage=+0.1563, cf=146519, max_update_norm=0.017277
+[router] step 5100 (tokens=326400): baseline_nll=8.5645, last_nll=8.5160, advantage=+0.0495, cf=146827, max_update_norm=0.017034
+[router] step 5110 (tokens=327040): baseline_nll=8.4757, last_nll=8.5503, advantage=-0.0762, cf=147128, max_update_norm=0.017796
+[router] step 5120 (tokens=327680): baseline_nll=8.6456, last_nll=8.9877, advantage=-0.3490, cf=147408, max_update_norm=0.018464
+[router] step 5130 (tokens=328320): baseline_nll=8.4956, last_nll=8.3281, advantage=+0.1710, cf=147667, max_update_norm=0.017990
+[router] step 5140 (tokens=328960): baseline_nll=8.4164, last_nll=9.1175, advantage=-0.7154, cf=147976, max_update_norm=0.017076
+[router] step 5150 (tokens=329600): baseline_nll=8.6040, last_nll=8.0093, advantage=+0.6068, cf=148280, max_update_norm=0.018943
+[router] step 5160 (tokens=330240): baseline_nll=8.5191, last_nll=8.2485, advantage=+0.2761, cf=148529, max_update_norm=0.017858
+[router] step 5170 (tokens=330880): baseline_nll=8.4402, last_nll=9.3317, advantage=-0.9097, cf=148819, max_update_norm=0.017956
+[router] step 5180 (tokens=331520): baseline_nll=8.5802, last_nll=7.8686, advantage=+0.7261, cf=149120, max_update_norm=0.018046
+[router] step 5190 (tokens=332160): baseline_nll=8.3918, last_nll=9.1706, advantage=-0.7947, cf=149402, max_update_norm=0.017851
+[router] step 5200 (tokens=332800): baseline_nll=8.4713, last_nll=9.0667, advantage=-0.6076, cf=149704, max_update_norm=0.019328
+[router] step 5210 (tokens=333440): baseline_nll=8.5937, last_nll=8.7410, advantage=-0.1503, cf=150018, max_update_norm=0.017483
+[router] step 5220 (tokens=334080): baseline_nll=8.5083, last_nll=8.1101, advantage=+0.4063, cf=150307, max_update_norm=0.018111
+[router] step 5230 (tokens=334720): baseline_nll=8.5259, last_nll=8.1710, advantage=+0.3622, cf=150618, max_update_norm=0.018763
+[router] step 5240 (tokens=335360): baseline_nll=8.4228, last_nll=8.5862, advantage=-0.1668, cf=150915, max_update_norm=0.018865
+[router] step 5250 (tokens=336000): baseline_nll=8.5451, last_nll=8.6307, advantage=-0.0873, cf=151228, max_update_norm=0.017639
+[router] step 5260 (tokens=336640): baseline_nll=8.4639, last_nll=7.9310, advantage=+0.5438, cf=151503, max_update_norm=0.018398
+[router] step 5270 (tokens=337280): baseline_nll=8.5307, last_nll=9.1866, advantage=-0.6693, cf=151780, max_update_norm=0.017254
+[router] step 5280 (tokens=337920): baseline_nll=8.4747, last_nll=9.5086, advantage=-1.0550, cf=152058, max_update_norm=0.018172
+[router] step 5290 (tokens=338560): baseline_nll=8.5302, last_nll=8.9605, advantage=-0.4391, cf=152327, max_update_norm=0.020224
+[router] step 5300 (tokens=339200): baseline_nll=8.5217, last_nll=8.1992, advantage=+0.3291, cf=152608, max_update_norm=0.017954
+[router] step 5310 (tokens=339840): baseline_nll=8.6118, last_nll=8.3138, advantage=+0.3041, cf=152892, max_update_norm=0.017586
+[router] step 5320 (tokens=340480): baseline_nll=8.4875, last_nll=7.7457, advantage=+0.7570, cf=153185, max_update_norm=0.018836
+[router] step 5330 (tokens=341120): baseline_nll=8.5114, last_nll=8.7555, advantage=-0.2491, cf=153473, max_update_norm=0.018481
+[router] step 5340 (tokens=341760): baseline_nll=8.5916, last_nll=9.1302, advantage=-0.5496, cf=153752, max_update_norm=0.017908
+[router] step 5350 (tokens=342400): baseline_nll=8.5364, last_nll=8.6587, advantage=-0.1247, cf=154040, max_update_norm=0.018321
+[router] step 5360 (tokens=343040): baseline_nll=8.4084, last_nll=9.0446, advantage=-0.6492, cf=154346, max_update_norm=0.018742
+[router] step 5370 (tokens=343680): baseline_nll=8.3858, last_nll=8.7918, advantage=-0.4143, cf=154632, max_update_norm=0.018168
+[router] step 5380 (tokens=344320): baseline_nll=8.5612, last_nll=9.1575, advantage=-0.6085, cf=154900, max_update_norm=0.018213
+[router] step 5390 (tokens=344960): baseline_nll=8.5936, last_nll=9.0818, advantage=-0.4982, cf=155160, max_update_norm=0.016765
+[router] step 5400 (tokens=345600): baseline_nll=8.4542, last_nll=7.7875, advantage=+0.6803, cf=155434, max_update_norm=0.016922
+[router] step 5410 (tokens=346240): baseline_nll=8.5934, last_nll=8.5408, advantage=+0.0537, cf=155729, max_update_norm=0.018117
+[router] step 5420 (tokens=346880): baseline_nll=8.4280, last_nll=9.0155, advantage=-0.5995, cf=156029, max_update_norm=0.018261
+[router] step 5430 (tokens=347520): baseline_nll=8.6455, last_nll=8.9422, advantage=-0.3028, cf=156327, max_update_norm=0.017532
+[router] step 5440 (tokens=348160): baseline_nll=8.4838, last_nll=7.0329, advantage=+1.4806, cf=156609, max_update_norm=0.019161
+[router] step 5450 (tokens=348800): baseline_nll=8.4137, last_nll=8.2793, advantage=+0.1371, cf=156892, max_update_norm=0.018616
+[router] step 5460 (tokens=349440): baseline_nll=8.5145, last_nll=9.0578, advantage=-0.5545, cf=157161, max_update_norm=0.016753
+[router] step 5470 (tokens=350080): baseline_nll=8.5650, last_nll=8.7595, advantage=-0.1985, cf=157446, max_update_norm=0.018286
+[router] step 5480 (tokens=350720): baseline_nll=8.4971, last_nll=8.9620, advantage=-0.4744, cf=157749, max_update_norm=0.018034
+[router] step 5490 (tokens=351360): baseline_nll=8.5715, last_nll=8.2599, advantage=+0.3180, cf=158052, max_update_norm=0.017423
+[router] step 5500 (tokens=352000): baseline_nll=8.4731, last_nll=7.8265, advantage=+0.6599, cf=158325, max_update_norm=0.018033
+[router] step 5510 (tokens=352640): baseline_nll=8.5254, last_nll=8.1305, advantage=+0.4030, cf=158634, max_update_norm=0.018440
+[router] step 5520 (tokens=353280): baseline_nll=8.6037, last_nll=9.2184, advantage=-0.6273, cf=158929, max_update_norm=0.019271
+[router] step 5530 (tokens=353920): baseline_nll=8.4371, last_nll=8.3446, advantage=+0.0944, cf=159222, max_update_norm=0.018522
+[router] step 5540 (tokens=354560): baseline_nll=8.5351, last_nll=8.6172, advantage=-0.0838, cf=159503, max_update_norm=0.017058
+[router] step 5550 (tokens=355200): baseline_nll=8.5581, last_nll=9.2816, advantage=-0.7383, cf=159788, max_update_norm=0.017287
+[router] step 5560 (tokens=355840): baseline_nll=8.5416, last_nll=9.5134, advantage=-0.9917, cf=160092, max_update_norm=0.018641
+[router] step 5570 (tokens=356480): baseline_nll=8.5631, last_nll=8.2564, advantage=+0.3130, cf=160352, max_update_norm=0.020680
+[router] step 5580 (tokens=357120): baseline_nll=8.5773, last_nll=9.6902, advantage=-1.1357, cf=160634, max_update_norm=0.018805
+[router] step 5590 (tokens=357760): baseline_nll=8.5507, last_nll=9.4871, advantage=-0.9555, cf=160920, max_update_norm=0.019698
+[router] step 5600 (tokens=358400): baseline_nll=8.4703, last_nll=8.7938, advantage=-0.3302, cf=161195, max_update_norm=0.019205
+[router] step 5610 (tokens=359040): baseline_nll=8.4773, last_nll=8.3451, advantage=+0.1349, cf=161471, max_update_norm=0.019395
+[router] step 5620 (tokens=359680): baseline_nll=8.4752, last_nll=8.2897, advantage=+0.1892, cf=161763, max_update_norm=0.017668
+[router] step 5630 (tokens=360320): baseline_nll=8.4381, last_nll=8.6476, advantage=-0.2138, cf=162034, max_update_norm=0.016805
+[router] step 5640 (tokens=360960): baseline_nll=8.5078, last_nll=9.3713, advantage=-0.8811, cf=162326, max_update_norm=0.018270
+[router] step 5650 (tokens=361600): baseline_nll=8.5828, last_nll=8.9489, advantage=-0.3735, cf=162581, max_update_norm=0.017277
+[router] step 5660 (tokens=362240): baseline_nll=8.4537, last_nll=8.5004, advantage=-0.0476, cf=162851, max_update_norm=0.017117
+[router] step 5670 (tokens=362880): baseline_nll=8.5055, last_nll=8.9273, advantage=-0.4304, cf=163130, max_update_norm=0.018840
+[router] step 5680 (tokens=363520): baseline_nll=8.4874, last_nll=8.7355, advantage=-0.2532, cf=163397, max_update_norm=0.018509
+[router] step 5690 (tokens=364160): baseline_nll=8.4584, last_nll=8.1899, advantage=+0.2740, cf=163685, max_update_norm=0.017409
+[router] step 5700 (tokens=364800): baseline_nll=8.4674, last_nll=7.6450, advantage=+0.8392, cf=163951, max_update_norm=0.017751
+[router] step 5710 (tokens=365440): baseline_nll=8.4972, last_nll=7.8827, advantage=+0.6270, cf=164224, max_update_norm=0.018762
+[router] step 5720 (tokens=366080): baseline_nll=8.5311, last_nll=8.7323, advantage=-0.2053, cf=164504, max_update_norm=0.018653
+[router] step 5730 (tokens=366720): baseline_nll=8.4439, last_nll=7.7591, advantage=+0.6988, cf=164798, max_update_norm=0.019206
+[router] step 5740 (tokens=367360): baseline_nll=8.5304, last_nll=8.3587, advantage=+0.1752, cf=165112, max_update_norm=0.017418
+[router] step 5750 (tokens=368000): baseline_nll=8.4664, last_nll=9.3068, advantage=-0.8576, cf=165419, max_update_norm=0.019762
+[router] step 5760 (tokens=368640): baseline_nll=8.5361, last_nll=9.4329, advantage=-0.9152, cf=165726, max_update_norm=0.019346
+[router] step 5770 (tokens=369280): baseline_nll=8.6194, last_nll=7.8776, advantage=+0.7570, cf=166025, max_update_norm=0.018806
+[router] step 5780 (tokens=369920): baseline_nll=8.5165, last_nll=8.2620, advantage=+0.2597, cf=166328, max_update_norm=0.018402
+[router] step 5790 (tokens=370560): baseline_nll=8.5237, last_nll=9.6099, advantage=-1.1084, cf=166619, max_update_norm=0.018449
+[router] step 5800 (tokens=371200): baseline_nll=8.4804, last_nll=9.3192, advantage=-0.8559, cf=166906, max_update_norm=0.018479
+[router] step 5810 (tokens=371840): baseline_nll=8.4612, last_nll=7.4264, advantage=+1.0559, cf=167183, max_update_norm=0.018808
+[router] step 5820 (tokens=372480): baseline_nll=8.5199, last_nll=9.5313, advantage=-1.0320, cf=167484, max_update_norm=0.018207
+[router] step 5830 (tokens=373120): baseline_nll=8.5772, last_nll=8.5845, advantage=-0.0074, cf=167762, max_update_norm=0.018346
+[router] step 5840 (tokens=373760): baseline_nll=8.5868, last_nll=9.4630, advantage=-0.8941, cf=168050, max_update_norm=0.017560
+[router] step 5850 (tokens=374400): baseline_nll=8.6347, last_nll=9.0768, advantage=-0.4512, cf=168333, max_update_norm=0.018803
+[router] step 5860 (tokens=375040): baseline_nll=8.5117, last_nll=9.0405, advantage=-0.5396, cf=168624, max_update_norm=0.019321
+[router] step 5870 (tokens=375680): baseline_nll=8.6131, last_nll=8.7369, advantage=-0.1264, cf=168915, max_update_norm=0.018343
+[router] step 5880 (tokens=376320): baseline_nll=8.5239, last_nll=7.4185, advantage=+1.1280, cf=169204, max_update_norm=0.020000
+[router] step 5890 (tokens=376960): baseline_nll=8.5416, last_nll=8.3676, advantage=+0.1775, cf=169493, max_update_norm=0.017032
+[router] step 5900 (tokens=377600): baseline_nll=8.4193, last_nll=8.9489, advantage=-0.5404, cf=169785, max_update_norm=0.017411
+[router] step 5910 (tokens=378240): baseline_nll=8.4839, last_nll=7.9354, advantage=+0.5597, cf=170089, max_update_norm=0.018894
+[router] step 5920 (tokens=378880): baseline_nll=8.5065, last_nll=7.8666, advantage=+0.6530, cf=170371, max_update_norm=0.017354
+[router] step 5930 (tokens=379520): baseline_nll=8.5310, last_nll=9.2865, advantage=-0.7709, cf=170657, max_update_norm=0.019337
+[router] step 5940 (tokens=380160): baseline_nll=8.5090, last_nll=8.1144, advantage=+0.4027, cf=170947, max_update_norm=0.018315
+[router] step 5950 (tokens=380800): baseline_nll=8.4649, last_nll=8.8674, advantage=-0.4108, cf=171228, max_update_norm=0.018557
+[router] step 5960 (tokens=381440): baseline_nll=8.5698, last_nll=8.8847, advantage=-0.3213, cf=171513, max_update_norm=0.018318
+[router] step 5970 (tokens=382080): baseline_nll=8.4763, last_nll=9.1905, advantage=-0.7288, cf=171794, max_update_norm=0.018220
+[router] step 5980 (tokens=382720): baseline_nll=8.5126, last_nll=7.6326, advantage=+0.8979, cf=172090, max_update_norm=0.019110
+[router] step 5990 (tokens=383360): baseline_nll=8.4368, last_nll=8.0196, advantage=+0.4257, cf=172369, max_update_norm=0.018459
+[router] step 6000 (tokens=384000): baseline_nll=8.4993, last_nll=8.1650, advantage=+0.3411, cf=172651, max_update_norm=0.019230
+[router] step 6010 (tokens=384640): baseline_nll=8.4867, last_nll=9.1300, advantage=-0.6565, cf=172936, max_update_norm=0.018887
+[router] step 6020 (tokens=385280): baseline_nll=8.4911, last_nll=8.6783, advantage=-0.1911, cf=173224, max_update_norm=0.017671
+[router] step 6030 (tokens=385920): baseline_nll=8.5318, last_nll=8.1525, advantage=+0.3871, cf=173511, max_update_norm=0.016619
+[router] step 6040 (tokens=386560): baseline_nll=8.4902, last_nll=8.0030, advantage=+0.4971, cf=173793, max_update_norm=0.017814
+[router] step 6050 (tokens=387200): baseline_nll=8.5161, last_nll=8.5734, advantage=-0.0585, cf=174074, max_update_norm=0.017781
+[router] step 6060 (tokens=387840): baseline_nll=8.5404, last_nll=8.4976, advantage=+0.0437, cf=174349, max_update_norm=0.018752
+[router] step 6070 (tokens=388480): baseline_nll=8.4916, last_nll=9.0615, advantage=-0.5816, cf=174643, max_update_norm=0.019408
+[router] step 6080 (tokens=389120): baseline_nll=8.4484, last_nll=8.6428, advantage=-0.1984, cf=174934, max_update_norm=0.016961
+[router] step 6090 (tokens=389760): baseline_nll=8.6184, last_nll=8.2567, advantage=+0.3690, cf=175239, max_update_norm=0.016507
+[router] step 6100 (tokens=390400): baseline_nll=8.5318, last_nll=7.8045, advantage=+0.7422, cf=175546, max_update_norm=0.018148
+[router] step 6110 (tokens=391040): baseline_nll=8.6686, last_nll=9.0441, advantage=-0.3832, cf=175843, max_update_norm=0.017265
+[router] step 6120 (tokens=391680): baseline_nll=8.4618, last_nll=9.0158, advantage=-0.5653, cf=176155, max_update_norm=0.018169
+[router] step 6130 (tokens=392320): baseline_nll=8.5069, last_nll=8.2056, advantage=+0.3074, cf=176475, max_update_norm=0.016234
+[router] step 6140 (tokens=392960): baseline_nll=8.5314, last_nll=7.9436, advantage=+0.5998, cf=176758, max_update_norm=0.019063
+[router] step 6150 (tokens=393600): baseline_nll=8.4783, last_nll=7.7958, advantage=+0.6964, cf=177061, max_update_norm=0.018683
+[router] step 6160 (tokens=394240): baseline_nll=8.4843, last_nll=8.8835, advantage=-0.4074, cf=177355, max_update_norm=0.018616
+[router] step 6170 (tokens=394880): baseline_nll=8.4861, last_nll=7.5661, advantage=+0.9388, cf=177629, max_update_norm=0.017855
+[router] step 6180 (tokens=395520): baseline_nll=8.5229, last_nll=8.2686, advantage=+0.2595, cf=177914, max_update_norm=0.018162
+[router] step 6190 (tokens=396160): baseline_nll=8.5138, last_nll=7.7318, advantage=+0.7980, cf=178231, max_update_norm=0.017060
+[router] step 6200 (tokens=396800): baseline_nll=8.5172, last_nll=8.9612, advantage=-0.4530, cf=178535, max_update_norm=0.017781
+[router] step 6210 (tokens=397440): baseline_nll=8.4159, last_nll=8.2964, advantage=+0.1220, cf=178814, max_update_norm=0.018135
+[router] step 6220 (tokens=398080): baseline_nll=8.6076, last_nll=7.7926, advantage=+0.8316, cf=179083, max_update_norm=0.018358
+[router] step 6230 (tokens=398720): baseline_nll=8.4654, last_nll=8.3392, advantage=+0.1287, cf=179355, max_update_norm=0.017773
+[router] step 6240 (tokens=399360): baseline_nll=8.5951, last_nll=8.9061, advantage=-0.3174, cf=179647, max_update_norm=0.019084
+[router] step 6250 (tokens=400000): baseline_nll=8.5943, last_nll=8.8887, advantage=-0.3004, cf=179919, max_update_norm=0.018005
+[router] step 6260 (tokens=400640): baseline_nll=8.4681, last_nll=9.4392, advantage=-0.9909, cf=180207, max_update_norm=0.018179
+[router] step 6270 (tokens=401280): baseline_nll=8.5323, last_nll=7.8203, advantage=+0.7265, cf=180470, max_update_norm=0.016854
+[router] step 6280 (tokens=401920): baseline_nll=8.5699, last_nll=9.2312, advantage=-0.6748, cf=180772, max_update_norm=0.018610
+[router] step 6290 (tokens=402560): baseline_nll=8.4721, last_nll=8.0549, advantage=+0.4257, cf=181070, max_update_norm=0.016978
+[router] step 6300 (tokens=403200): baseline_nll=8.5392, last_nll=8.7436, advantage=-0.2086, cf=181358, max_update_norm=0.017938
+[router] step 6310 (tokens=403840): baseline_nll=8.5140, last_nll=9.0480, advantage=-0.5450, cf=181646, max_update_norm=0.018997
+[router] step 6320 (tokens=404480): baseline_nll=8.4526, last_nll=8.2906, advantage=+0.1654, cf=181932, max_update_norm=0.019600
+[router] step 6330 (tokens=405120): baseline_nll=8.4349, last_nll=7.9918, advantage=+0.4522, cf=182217, max_update_norm=0.019746
+[router] step 6340 (tokens=405760): baseline_nll=8.4425, last_nll=8.3747, advantage=+0.0693, cf=182476, max_update_norm=0.019011
+[router] step 6350 (tokens=406400): baseline_nll=8.5275, last_nll=8.3378, advantage=+0.1936, cf=182762, max_update_norm=0.018024
+[router] step 6360 (tokens=407040): baseline_nll=8.4906, last_nll=8.1667, advantage=+0.3305, cf=183054, max_update_norm=0.017591
+[router] step 6370 (tokens=407680): baseline_nll=8.4205, last_nll=7.9632, advantage=+0.4666, cf=183358, max_update_norm=0.018632
+[router] step 6380 (tokens=408320): baseline_nll=8.5872, last_nll=9.9129, advantage=-1.3528, cf=183656, max_update_norm=0.017007
+[router] step 6390 (tokens=408960): baseline_nll=8.4971, last_nll=7.4532, advantage=+1.0652, cf=183932, max_update_norm=0.018352
+[router] step 6400 (tokens=409600): baseline_nll=8.5670, last_nll=9.9255, advantage=-1.3863, cf=184203, max_update_norm=0.017934
+[router] step 6410 (tokens=410240): baseline_nll=8.5222, last_nll=9.0807, advantage=-0.5699, cf=184491, max_update_norm=0.017565
+[router] step 6420 (tokens=410880): baseline_nll=8.5942, last_nll=8.7310, advantage=-0.1396, cf=184773, max_update_norm=0.018475
+[router] step 6430 (tokens=411520): baseline_nll=8.5054, last_nll=7.8534, advantage=+0.6653, cf=185061, max_update_norm=0.020345
+[router] step 6440 (tokens=412160): baseline_nll=8.3980, last_nll=8.0783, advantage=+0.3261, cf=185342, max_update_norm=0.019684
+[router] step 6450 (tokens=412800): baseline_nll=8.5276, last_nll=8.1282, advantage=+0.4075, cf=185644, max_update_norm=0.018427
+[router] step 6460 (tokens=413440): baseline_nll=8.4352, last_nll=8.3935, advantage=+0.0425, cf=185935, max_update_norm=0.018075
+[router] step 6470 (tokens=414080): baseline_nll=8.5212, last_nll=8.9272, advantage=-0.4143, cf=186203, max_update_norm=0.017428
+[router] step 6480 (tokens=414720): baseline_nll=8.4409, last_nll=8.1859, advantage=+0.2602, cf=186495, max_update_norm=0.017810
+[router] step 6490 (tokens=415360): baseline_nll=8.4494, last_nll=9.1399, advantage=-0.7046, cf=186758, max_update_norm=0.019705
+[router] step 6500 (tokens=416000): baseline_nll=8.5215, last_nll=8.2901, advantage=+0.2362, cf=187059, max_update_norm=0.017756
+[router] step 6510 (tokens=416640): baseline_nll=8.5225, last_nll=8.0328, advantage=+0.4996, cf=187333, max_update_norm=0.017692
+[router] step 6520 (tokens=417280): baseline_nll=8.5481, last_nll=7.6220, advantage=+0.9451, cf=187616, max_update_norm=0.016591
+[router] step 6530 (tokens=417920): baseline_nll=8.5352, last_nll=8.6819, advantage=-0.1497, cf=187887, max_update_norm=0.018145
+[router] step 6540 (tokens=418560): baseline_nll=8.5314, last_nll=8.0259, advantage=+0.5158, cf=188167, max_update_norm=0.019295
+[router] step 6550 (tokens=419200): baseline_nll=8.4967, last_nll=8.8646, advantage=-0.3755, cf=188455, max_update_norm=0.019058
+[router] step 6560 (tokens=419840): baseline_nll=8.5056, last_nll=7.5053, advantage=+1.0207, cf=188752, max_update_norm=0.018234
+[router] step 6570 (tokens=420480): baseline_nll=8.4141, last_nll=8.9837, advantage=-0.5812, cf=189031, max_update_norm=0.018763
+[router] step 6580 (tokens=421120): baseline_nll=8.5571, last_nll=8.7264, advantage=-0.1728, cf=189295, max_update_norm=0.016763
+[router] step 6590 (tokens=421760): baseline_nll=8.4336, last_nll=8.1844, advantage=+0.2543, cf=189600, max_update_norm=0.018541
+[router] step 6600 (tokens=422400): baseline_nll=8.4860, last_nll=8.1927, advantage=+0.2992, cf=189928, max_update_norm=0.019088
+[router] step 6610 (tokens=423040): baseline_nll=8.5215, last_nll=8.7392, advantage=-0.2222, cf=190222, max_update_norm=0.019141
+[router] step 6620 (tokens=423680): baseline_nll=8.4629, last_nll=9.0340, advantage=-0.5828, cf=190515, max_update_norm=0.018884
+[router] step 6630 (tokens=424320): baseline_nll=8.5240, last_nll=8.2615, advantage=+0.2679, cf=190797, max_update_norm=0.020934
+[router] step 6640 (tokens=424960): baseline_nll=8.5366, last_nll=7.9375, advantage=+0.6112, cf=191090, max_update_norm=0.017719
+[router] step 6650 (tokens=425600): baseline_nll=8.4348, last_nll=7.1088, advantage=+1.3530, cf=191355, max_update_norm=0.017128
+[router] step 6660 (tokens=426240): baseline_nll=8.4666, last_nll=8.5941, advantage=-0.1301, cf=191657, max_update_norm=0.018416
+[router] step 6670 (tokens=426880): baseline_nll=8.5567, last_nll=8.8343, advantage=-0.2832, cf=191951, max_update_norm=0.018410
+[router] step 6680 (tokens=427520): baseline_nll=8.5794, last_nll=7.9835, advantage=+0.6080, cf=192200, max_update_norm=0.017924
+[router] step 6690 (tokens=428160): baseline_nll=8.4724, last_nll=9.0653, advantage=-0.6049, cf=192461, max_update_norm=0.017713
+[router] step 6700 (tokens=428800): baseline_nll=8.4796, last_nll=8.3876, advantage=+0.0939, cf=192741, max_update_norm=0.018586
+[router] step 6710 (tokens=429440): baseline_nll=8.5071, last_nll=8.1425, advantage=+0.3721, cf=193028, max_update_norm=0.017509
+[router] step 6720 (tokens=430080): baseline_nll=8.4300, last_nll=7.9392, advantage=+0.5008, cf=193319, max_update_norm=0.017989
+[router] step 6730 (tokens=430720): baseline_nll=8.4364, last_nll=8.6080, advantage=-0.1750, cf=193594, max_update_norm=0.017105
+[router] step 6740 (tokens=431360): baseline_nll=8.5818, last_nll=8.1201, advantage=+0.4711, cf=193860, max_update_norm=0.018175
+[router] step 6750 (tokens=432000): baseline_nll=8.4452, last_nll=7.8296, advantage=+0.6282, cf=194134, max_update_norm=0.018932
+[router] step 6760 (tokens=432640): baseline_nll=8.3625, last_nll=9.3743, advantage=-1.0324, cf=194424, max_update_norm=0.018222
+[router] step 6770 (tokens=433280): baseline_nll=8.5264, last_nll=8.2465, advantage=+0.2856, cf=194711, max_update_norm=0.019233
+[router] step 6780 (tokens=433920): baseline_nll=8.4203, last_nll=8.2689, advantage=+0.1545, cf=195001, max_update_norm=0.018353
+[router] step 6790 (tokens=434560): baseline_nll=8.4706, last_nll=8.7814, advantage=-0.3172, cf=195292, max_update_norm=0.017341
+[router] step 6800 (tokens=435200): baseline_nll=8.4791, last_nll=8.9923, advantage=-0.5237, cf=195583, max_update_norm=0.017832
+[router] step 6810 (tokens=435840): baseline_nll=8.5187, last_nll=8.8405, advantage=-0.3284, cf=195863, max_update_norm=0.017822
+[router] step 6820 (tokens=436480): baseline_nll=8.4889, last_nll=8.7857, advantage=-0.3029, cf=196168, max_update_norm=0.018666
+[router] step 6830 (tokens=437120): baseline_nll=8.4842, last_nll=7.9568, advantage=+0.5381, cf=196470, max_update_norm=0.018444
+[router] step 6840 (tokens=437760): baseline_nll=8.5639, last_nll=8.5417, advantage=+0.0227, cf=196745, max_update_norm=0.019421
+[router] step 6850 (tokens=438400): baseline_nll=8.4420, last_nll=7.7587, advantage=+0.6973, cf=197031, max_update_norm=0.018843
+[router] step 6860 (tokens=439040): baseline_nll=8.4323, last_nll=8.1409, advantage=+0.2973, cf=197325, max_update_norm=0.018903
+[router] step 6870 (tokens=439680): baseline_nll=8.4276, last_nll=8.1810, advantage=+0.2516, cf=197600, max_update_norm=0.017933
+[router] step 6880 (tokens=440320): baseline_nll=8.4442, last_nll=8.2034, advantage=+0.2457, cf=197863, max_update_norm=0.018586
+[router] step 6890 (tokens=440960): baseline_nll=8.4589, last_nll=8.0091, advantage=+0.4589, cf=198163, max_update_norm=0.018751
+[router] step 6900 (tokens=441600): baseline_nll=8.5360, last_nll=9.5042, advantage=-0.9879, cf=198421, max_update_norm=0.018897
+[router] step 6910 (tokens=442240): baseline_nll=8.4549, last_nll=8.1709, advantage=+0.2898, cf=198729, max_update_norm=0.018189
+[router] step 6920 (tokens=442880): baseline_nll=8.5227, last_nll=9.2728, advantage=-0.7655, cf=198991, max_update_norm=0.018144
+[router] step 6930 (tokens=443520): baseline_nll=8.5239, last_nll=8.1231, advantage=+0.4090, cf=199302, max_update_norm=0.019071
+[router] step 6940 (tokens=444160): baseline_nll=8.4367, last_nll=8.5427, advantage=-0.1081, cf=199581, max_update_norm=0.019135
+[router] step 6950 (tokens=444800): baseline_nll=8.4768, last_nll=8.8423, advantage=-0.3730, cf=199871, max_update_norm=0.018455
+[router] step 6960 (tokens=445440): baseline_nll=8.4985, last_nll=7.9501, advantage=+0.5596, cf=200163, max_update_norm=0.018946
+[router] step 6970 (tokens=446080): baseline_nll=8.4792, last_nll=8.9810, advantage=-0.5120, cf=200448, max_update_norm=0.017632
+[router] step 6980 (tokens=446720): baseline_nll=8.4369, last_nll=9.1871, advantage=-0.7655, cf=200723, max_update_norm=0.017290
+[router] step 6990 (tokens=447360): baseline_nll=8.4325, last_nll=7.2784, advantage=+1.1777, cf=201025, max_update_norm=0.017545
+[router] step 7000 (tokens=448000): baseline_nll=8.4828, last_nll=8.8326, advantage=-0.3570, cf=201342, max_update_norm=0.017800
+[router] step 7010 (tokens=448640): baseline_nll=8.4432, last_nll=8.3266, advantage=+0.1190, cf=201602, max_update_norm=0.017365
+[router] step 7020 (tokens=449280): baseline_nll=8.4687, last_nll=8.7226, advantage=-0.2591, cf=201885, max_update_norm=0.017324
+[router] step 7030 (tokens=449920): baseline_nll=8.4828, last_nll=7.2471, advantage=+1.2609, cf=202153, max_update_norm=0.018890
+[router] step 7040 (tokens=450560): baseline_nll=8.5498, last_nll=8.5344, advantage=+0.0156, cf=202443, max_update_norm=0.017433
+[router] step 7050 (tokens=451200): baseline_nll=8.5461, last_nll=8.6340, advantage=-0.0898, cf=202722, max_update_norm=0.019951
+[router] step 7060 (tokens=451840): baseline_nll=8.5963, last_nll=7.5820, advantage=+1.0350, cf=203001, max_update_norm=0.019844
+[router] step 7070 (tokens=452480): baseline_nll=8.5240, last_nll=8.9373, advantage=-0.4217, cf=203292, max_update_norm=0.016681
+[router] step 7080 (tokens=453120): baseline_nll=8.4277, last_nll=8.8775, advantage=-0.4589, cf=203563, max_update_norm=0.017390
+[router] step 7090 (tokens=453760): baseline_nll=8.5601, last_nll=8.7430, advantage=-0.1867, cf=203848, max_update_norm=0.016796
+[router] step 7100 (tokens=454400): baseline_nll=8.5320, last_nll=9.0511, advantage=-0.5297, cf=204136, max_update_norm=0.016461
+[router] step 7110 (tokens=455040): baseline_nll=8.4862, last_nll=8.1350, advantage=+0.3584, cf=204447, max_update_norm=0.018236
+[router] step 7120 (tokens=455680): baseline_nll=8.3095, last_nll=9.1684, advantage=-0.8764, cf=204758, max_update_norm=0.019046
+[router] step 7130 (tokens=456320): baseline_nll=8.5136, last_nll=8.4496, advantage=+0.0653, cf=205023, max_update_norm=0.016912
+[router] step 7140 (tokens=456960): baseline_nll=8.5881, last_nll=8.5603, advantage=+0.0284, cf=205287, max_update_norm=0.016443
+[router] step 7150 (tokens=457600): baseline_nll=8.4492, last_nll=9.8774, advantage=-1.4574, cf=205558, max_update_norm=0.017663
+[router] step 7160 (tokens=458240): baseline_nll=8.4707, last_nll=7.9401, advantage=+0.5414, cf=205843, max_update_norm=0.018322
+[router] step 7170 (tokens=458880): baseline_nll=8.5618, last_nll=9.5867, advantage=-1.0458, cf=206138, max_update_norm=0.017832
+[router] step 7180 (tokens=459520): baseline_nll=8.4293, last_nll=8.2886, advantage=+0.1436, cf=206422, max_update_norm=0.019827
+[router] step 7190 (tokens=460160): baseline_nll=8.5010, last_nll=8.8794, advantage=-0.3862, cf=206703, max_update_norm=0.019076
+[router] step 7200 (tokens=460800): baseline_nll=8.4404, last_nll=7.7632, advantage=+0.6911, cf=206969, max_update_norm=0.018748
+[router] step 7210 (tokens=461440): baseline_nll=8.5460, last_nll=8.2719, advantage=+0.2796, cf=207245, max_update_norm=0.017307
+[router] step 7220 (tokens=462080): baseline_nll=8.5709, last_nll=8.7241, advantage=-0.1563, cf=207519, max_update_norm=0.017736
+[router] step 7230 (tokens=462720): baseline_nll=8.5133, last_nll=8.2870, advantage=+0.2309, cf=207784, max_update_norm=0.017728
+[router] step 7240 (tokens=463360): baseline_nll=8.4857, last_nll=9.2140, advantage=-0.7432, cf=208065, max_update_norm=0.017726
+[router] step 7250 (tokens=464000): baseline_nll=8.4595, last_nll=8.4844, advantage=-0.0254, cf=208341, max_update_norm=0.018304
+[router] step 7260 (tokens=464640): baseline_nll=8.5138, last_nll=7.6109, advantage=+0.9213, cf=208638, max_update_norm=0.017082
+[router] step 7270 (tokens=465280): baseline_nll=8.5888, last_nll=8.2736, advantage=+0.3216, cf=208948, max_update_norm=0.018244
+[router] step 7280 (tokens=465920): baseline_nll=8.4499, last_nll=7.9839, advantage=+0.4755, cf=209237, max_update_norm=0.018922
+[router] step 7290 (tokens=466560): baseline_nll=8.5074, last_nll=8.1361, advantage=+0.3789, cf=209488, max_update_norm=0.017827
+[router] step 7300 (tokens=467200): baseline_nll=8.4425, last_nll=8.3624, advantage=+0.0817, cf=209780, max_update_norm=0.020263
+[router] step 7310 (tokens=467840): baseline_nll=8.4539, last_nll=8.1872, advantage=+0.2721, cf=210075, max_update_norm=0.016932
+[router] step 7320 (tokens=468480): baseline_nll=8.4929, last_nll=8.8348, advantage=-0.3489, cf=210372, max_update_norm=0.018413
+[router] step 7330 (tokens=469120): baseline_nll=8.5740, last_nll=8.3295, advantage=+0.2495, cf=210674, max_update_norm=0.022067
+[router] step 7340 (tokens=469760): baseline_nll=8.5295, last_nll=7.9868, advantage=+0.5538, cf=210972, max_update_norm=0.018166
+[router] step 7350 (tokens=470400): baseline_nll=8.4977, last_nll=8.9122, advantage=-0.4230, cf=211233, max_update_norm=0.018613
+[router] step 7360 (tokens=471040): baseline_nll=8.5514, last_nll=8.5396, advantage=+0.0121, cf=211515, max_update_norm=0.018693
+[router] step 7370 (tokens=471680): baseline_nll=8.5834, last_nll=7.6845, advantage=+0.9172, cf=211797, max_update_norm=0.019330
+[router] step 7380 (tokens=472320): baseline_nll=8.5312, last_nll=7.8690, advantage=+0.6757, cf=212079, max_update_norm=0.017580
+[router] step 7390 (tokens=472960): baseline_nll=8.5022, last_nll=8.2443, advantage=+0.2631, cf=212347, max_update_norm=0.018359
+[router] step 7400 (tokens=473600): baseline_nll=8.4922, last_nll=8.4747, advantage=+0.0179, cf=212648, max_update_norm=0.017532
+[router] step 7410 (tokens=474240): baseline_nll=8.5106, last_nll=8.6742, advantage=-0.1669, cf=212912, max_update_norm=0.019367
+[router] step 7420 (tokens=474880): baseline_nll=8.5628, last_nll=9.5496, advantage=-1.0069, cf=213242, max_update_norm=0.017624
+[router] step 7430 (tokens=475520): baseline_nll=8.5809, last_nll=9.5393, advantage=-0.9779, cf=213526, max_update_norm=0.017318
+[router] step 7440 (tokens=476160): baseline_nll=8.4905, last_nll=8.4166, advantage=+0.0754, cf=213838, max_update_norm=0.019339
+[router] step 7450 (tokens=476800): baseline_nll=8.5333, last_nll=7.8690, advantage=+0.6778, cf=214094, max_update_norm=0.018476
+[router] step 7460 (tokens=477440): baseline_nll=8.5407, last_nll=7.8922, advantage=+0.6617, cf=214386, max_update_norm=0.016600
+[router] step 7470 (tokens=478080): baseline_nll=8.6092, last_nll=9.2193, advantage=-0.6225, cf=214676, max_update_norm=0.016691
+[router] step 7480 (tokens=478720): baseline_nll=8.5305, last_nll=6.7676, advantage=+1.7988, cf=214950, max_update_norm=0.016580
+[router] step 7490 (tokens=479360): baseline_nll=8.4682, last_nll=8.2017, advantage=+0.2719, cf=215220, max_update_norm=0.018325
+[router] step 7500 (tokens=480000): baseline_nll=8.4605, last_nll=9.0209, advantage=-0.5718, cf=215530, max_update_norm=0.017565
+[router] step 7510 (tokens=480640): baseline_nll=8.4674, last_nll=8.1965, advantage=+0.2764, cf=215801, max_update_norm=0.021334
+[router] step 7520 (tokens=481280): baseline_nll=8.4185, last_nll=8.4538, advantage=-0.0360, cf=216077, max_update_norm=0.019930
+[router] step 7530 (tokens=481920): baseline_nll=8.5839, last_nll=9.4771, advantage=-0.9114, cf=216357, max_update_norm=0.018300
+[router] step 7540 (tokens=482560): baseline_nll=8.4616, last_nll=7.9428, advantage=+0.5294, cf=216640, max_update_norm=0.018486
+[router] step 7550 (tokens=483200): baseline_nll=8.5197, last_nll=9.5925, advantage=-1.0947, cf=216918, max_update_norm=0.018110
+[router] step 7560 (tokens=483840): baseline_nll=8.4761, last_nll=8.3532, advantage=+0.1253, cf=217221, max_update_norm=0.017759
+[router] step 7570 (tokens=484480): baseline_nll=8.4379, last_nll=7.6191, advantage=+0.8356, cf=217525, max_update_norm=0.018742
+[router] step 7580 (tokens=485120): baseline_nll=8.4849, last_nll=8.4732, advantage=+0.0119, cf=217818, max_update_norm=0.019475
+[router] step 7590 (tokens=485760): baseline_nll=8.6504, last_nll=9.0153, advantage=-0.3724, cf=218120, max_update_norm=0.018970
+[router] step 7600 (tokens=486400): baseline_nll=8.4238, last_nll=8.2348, advantage=+0.1928, cf=218396, max_update_norm=0.019546
+[router] final per-layer diagnostics:
+  layer 2: steps=7608, counterfactuals=72904, l2_drift=72.06199 (original_norm=1.6445, relative=4381.93%)
+  layer 5: steps=7608, counterfactuals=72660, l2_drift=79.26532 (original_norm=1.6211, relative=4889.56%)
+  layer 7: steps=7608, counterfactuals=73015, l2_drift=77.97632 (original_norm=1.6270, relative=4792.56%)
+[router] wrote 3 routers to "/home/suds/Projects/clob/experiments/2026-06-22_first_run/routers.bin" (49196 bytes, cf_count=218579, total_steps=7607)
+---- done in 2288s
+
+==== [08:55:16] ingest (stream corpus, record episodes, metrics) ====
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[ingest] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[conf] loaded "/home/suds/Projects/clob/experiments/2026-06-22_first_run/conf.bin" (dim=512, n_trained=973708, mse=0.6658)
+[meta] loaded "/home/suds/Projects/clob/experiments/2026-06-22_first_run/meta.bin" (dim=512, n_trained=973708, mse=0.3287, refresh_period=500)
+[routers] applied 3 routers from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/routers.bin"
+[metrics] Writing windows of 1000 tokens to "/home/suds/Projects/clob/experiments/2026-06-22_first_run/metrics.jsonl"
+[ingest] Loading pre-encoded tokens from "/home/suds/Projects/clob/data/corpus/train.tokens"
+[ingest] Streaming 486855 tokens (of 486855 total)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00001" (tokens=50000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00002" (tokens=100000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00003" (tokens=150000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00004" (tokens=200000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00005" (tokens=250000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00006" (tokens=300000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00007" (tokens=350000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00008" (tokens=400000)
+[ingest] checkpoint "/home/suds/Projects/clob/experiments/2026-06-22_first_run/checkpoints/checkpoint_00009" (tokens=450000)
+[ingest] Done: 486854 predictions, mean NLL=8.4604, perplexity=4723.81, 84.4 tok/s
+[ingest] Novel: 79011 episodes stored. Memory: 79011 episodes (173.38 MB)
+---- done in 5771s
+
+==== [10:31:27] crystal (drain episodes into ternary modules) ====
+[crystal] Loading model "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[crystal] Opening memory "/home/suds/Projects/clob/experiments/2026-06-22_first_run/episodes"
+[kernel] AVX2 kernels enabled
+[crystal] Processing 500 unconsumed episodes
+[crystal] Found 8 clusters
+[crystal] 0 new modules saved to "/home/suds/Projects/clob/experiments/2026-06-22_first_run/modules" (next_id was 0)
+---- done in 3s
+
+==== [10:31:30] bench-suite (ablation on the HELD-OUT split — Bet 2) ====
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[bench-suite] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[bench-suite] Holdout tokens: 52272
+[bench-suite] Running 24 cells
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[kernel] AVX2 kernels enabled
+[bench-suite] Wrote 24 cells to "/home/suds/Projects/clob/experiments/2026-06-22_first_run/bench.tsv"
+
+[bench-suite] Summary (axis-pivot):
+adaptive   modules    router      n_seeds     mean_nll    j_per_nat    tok/s
+false      empty      pristine          6       8.5199     0.007505    235.0
+false      empty      trained           6       8.5220     0.007960    224.6
+true       empty      pristine          6       8.5138     0.009243    195.5
+true       empty      trained           6       8.5024     0.009260    195.3
+
+---- done in 174s
+
+==== [10:34:24] metrics dashboard ====
+ idx   tokens      sec          J      J/nat    ΔJ/nat%   mean_nll  Δmean_nll    tok/s
+ 467     1000    10.35    155.227     0.0184     +0.00%     8.4492    +0.0000     96.6
+ 468     1000    11.49    172.348     0.0203    +10.57%     8.4842    +0.0350     87.0
+ 469     1000    11.00    164.983     0.0195     +5.94%     8.4772    +0.0279     90.9
+ 470     1000    13.04    195.564     0.0231    +25.59%     8.4762    +0.0269     76.7
+ 471     1000    11.39    170.799     0.0201     +9.49%     8.4910    +0.0418     87.8
+ 472     1000    13.08    196.201     0.0232    +26.07%     8.4714    +0.0221     76.5
+ 473     1000    18.66    279.856     0.0331    +79.96%     8.4649    +0.0156     53.6
+ 474     1000    12.25    183.693     0.0217    +18.19%     8.4602    +0.0110     81.7
+ 475     1000    12.18    182.670     0.0216    +17.60%     8.4549    +0.0057     82.1
+ 476     1000    13.00    195.031     0.0231    +25.77%     8.4407    -0.0085     76.9
+ 477     1000    12.19    182.790     0.0216    +17.42%     8.4735    +0.0243     82.1
+ 478     1000    14.44    216.658     0.0257    +39.69%     8.4424    -0.0068     69.2
+ 479     1000    12.51    187.683     0.0222    +20.62%     8.4693    +0.0201     79.9
+ 480     1000    11.74    176.056     0.0207    +12.84%     8.4923    +0.0430     85.2
+ 481     1000    11.84    177.539     0.0210    +14.33%     8.4526    +0.0034     84.5
+ 482     1000    12.14    182.114     0.0216    +17.62%     8.4279    -0.0214     82.4
+ 483     1000    13.04    195.651     0.0231    +25.77%     8.4677    +0.0185     76.7
+ 484     1000    12.23    183.501     0.0217    +18.07%     8.4594    +0.0102     81.7
+ 485     1000    10.03    150.378     0.0178     -3.12%     8.4487    -0.0006     99.7
+ 486      854     9.29    139.393     0.0192     +4.66%     8.4886    +0.0393     91.9
+
+baseline J/nat = 0.0184 | latest J/nat = 0.0192 | ΔCE vs baseline = +0.0393
+---- done in 0s
+
+#### DONE in 12968s — artifacts in /home/suds/Projects/clob/experiments/2026-06-22_first_run
+modules crystallized: 0
+bench table:          /home/suds/Projects/clob/experiments/2026-06-22_first_run/bench.tsv
+
+Judge bench.tsv against the pre-registered thresholds in ARCHITECTURE.md
+(Part V → Falsification thresholds). Note: the core stays at synth init —
+this run trains the heads/router and crystallizes modules; it is the
+first real-data test of Bet 2 (crystallization gain), not core training.

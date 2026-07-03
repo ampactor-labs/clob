@@ -18,11 +18,18 @@ compiled ternary modules and discards the raw episodes once compressed.
 See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 "unsurpassable" rhetoric of earlier drafts).
 
-## State (updated 2026-06-21 — Phases G–K shipped, pre-first-real-run)
+## State (updated 2026-07-03 — first real run + reservoir probe completed)
 
-**Branch:** `main`, 12 commits ahead of `origin/main` (not pushed).
+**Branch:** `main`, 18 commits ahead of `origin/main` (not pushed), with
+local cleanup/docs work in progress.
 
 **Commit history (most recent first):**
+- `d0e900a` — Add IF_FOUND.md: the kernel's honest self-record
+- `271ab2a` — Add scripts/first_run.sh: one-command unattended real-data run
+- `a70dbce` — Harden the .tokens cache and peer handshake; audit runtime unwraps
+- `cca14b0` — Pre-register bet thresholds and a ground-truth-first run discipline
+- `e562162` — Phase L scaffolding: .tokens cache, encode subcommand, split-check, corpus scripts
+- `9dfb4aa` — Refresh PLAN.md state block and Phase K scope to current reality
 - `88827f4` — Phase K: bench-suite ablation harness (trajectory.rs deferred to L)
 - `c280808` — Phase J: checkpoint + resume for ingest
 - `41f1142` — Phase I: docs layer — README, runbook, subsystem deep dives, CLAUDE.md
@@ -35,20 +42,23 @@ See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 - `64626ac` — Phase B+C: Head C (confidence) + adaptive decode
 - `abaa160` — Phase A: metrics subsystem + J/nat dashboard
 - `827c890` — (pre-supercharge) Sharpened ARCHITECTURE.md + fixed distill MDL math
-- `b848eed` — (pre-supercharge) Phase 4: trained energy critic, fixed novelty
 
-**Test suite:** 57 tests pass (`cargo test --release`). Includes unit
+**Test suite:** 70+ tests are expected to pass (`cargo test --release`). Includes unit
 tests for distill/MDL, router policy gradient, meta-critic target-network
 refresh, symbolic-synth planted-pattern recovery, active selection
 acquisition score, metrics window serialization, byte-identical model
 save (Phase G), manifest round-trip (Phase H), checkpoint resume
-(Phase J), bench-suite summarization (Phase K), and more.
+(Phase J), bench-suite summarization (Phase K), split enforcement
+(Phase L), and more.
 
-**Tier 1 phase status:** G ✓ · H ✓ · I ✓ · J ✓ · K ✓ (shipped) —
-L · M · N (pending). The next gate is **Phase L (real data)**: until a
-real corpus runs, every metric (J/nat ≈ 0.006, mean_nll ≈ 7.0) is
-uninformative by construction, and all five falsifiable bets in
-`ARCHITECTURE.md` Part V remain untested/instrumented.
+**Tier 1 phase status:** G ✓ · H ✓ · I ✓ · J ✓ · K ✓ · L partial · N
+partial. The first real run completed locally on the default Moby-Dick corpus:
+it trained heads/router, ingested the corpus, checkpointed, ran bench-suite,
+and crystallized **zero modules**. A follow-up reservoir probe over frozen-core
+hidden states measured **zero contextual gain** over a trained unigram null.
+The next gate is no longer "run first_run"; it is **Path B core training**.
+See `docs/experiments/reservoir-probe.md` and
+`docs/plans/path-b-core-training-build.md`.
 
 **End-to-end pipeline verified** on synthetic weights against
 `tests/data/eval_corpus.txt` (1.5 KB smoke corpus):
@@ -74,7 +84,10 @@ In rough order:
    adaptive decode.
 8. **`src/metrics/{mod,window}.rs`** — the dashboard substrate.
 9. **`src/perceive/active.rs`** — active input selection.
-10. **`/home/suds/.claude/projects/-home-suds-Projects-clob/memory/project_clob.md`**
+10. **`docs/experiments/reservoir-probe.md`** — why Path A is currently
+    treated as failed.
+11. **`docs/plans/path-b-core-training-build.md`** — the next build track.
+12. **`/home/suds/.claude/projects/-home-suds-Projects-clob/memory/project_clob.md`**
     — long-lived project memory with shipped-state summary; update it
     at the end of every major work session.
 
@@ -84,7 +97,7 @@ In rough order:
 # 1. Smoke-build
 cargo build --release
 
-# 2. Smoke-test (must show "57 passed")
+# 2. Smoke-test (must show all tests passed; 70+ expected)
 cargo test --release 2>&1 | grep "test result"
 
 # 3. End-to-end pipeline (takes ~1 min)
@@ -108,13 +121,17 @@ cd /tmp && rm -rf clob_verify && mkdir clob_verify && cd clob_verify
 Expected: clean run, 3 windows of metrics, J/nat ≈ 0.006, mean_nll ≈ 7.0,
 some counterfactuals and some meta-suppressions.
 
-## Known gaps remaining (post-K)
+## Known gaps remaining
 
-Phases G–K closed the original blockers: the model-save path, top-level
+Phases G–L/N closed the original blockers: the model-save path, top-level
 seed threading (no `thread_rng` in production paths), config manifests,
-checkpoint/resume, and the bench-suite harness all exist now. Still open:
-- `tests/data/eval_corpus.txt` is 1.5 KB — smoke only, no held-out
-  discipline, no train/eval split, no real corpus. **→ Phase L (next).**
+checkpoint/resume, bench-suite, token caches, split checks, and first-run
+script all exist now. Still open:
+- The core does not learn. `src/learn` has pieces, but there is no supervised
+  backward pass, no untied readout, and no `train` command. **→ Path B.**
+- The first real run crystallized zero modules because the frozen random core
+  did not expose useful structure. Crystallization should wait for a trained
+  core before being judged again.
 - Scalar x86 emitter (`addss`/`subss` per trit); AVX2 is aspiration,
   not measurement. **→ Phase O.**
 - `eprintln!` everywhere (171 calls, 158 in `main.rs`); no leveled

@@ -1,0 +1,36 @@
+[token] Loaded tokenizer from "/home/suds/Projects/clob/data/corpus/tokenizer.bin" (vocab=3260)
+[probe] Loading model from "/home/suds/Projects/clob/experiments/2026-06-22_first_run/seed.clob"
+[kernel] AVX2 kernels enabled
+[probe] frozen core: d_model=512, vocab=4096 — no head, no modules
+[ingest] Loading pre-encoded tokens from "/home/suds/Projects/clob/data/corpus/train.tokens"
+[probe] extracting TRAIN features from "/home/suds/Projects/clob/data/corpus/train.tokens"
+[probe] train: extracted 50000/149999 features
+[probe] train: extracted 100000/149999 features
+[ingest] Loading pre-encoded tokens from "/home/suds/Projects/clob/data/corpus/holdout.tokens"
+[probe] extracting HOLDOUT features from "/home/suds/Projects/clob/data/corpus/holdout.tokens"
+[probe] holdout: extracted 50000/52271 features
+[probe] train positions=149999, holdout positions=52271
+[probe] bias-only null: holdout NLL = 4.9168 (Laplace marginal = 4.9168)
+[probe] fitting readout: epochs=4, batch_size=512, lr=0.5, wd sweep=[0.01, 0.1, 1.0]
+[probe] wd=0.01    : best_holdout=4.9520 final=4.9520 (train 5.6841→4.8963)
+[probe] wd=0.1     : best_holdout=4.9528 final=4.9528 (train 5.4799→4.8941)
+[probe] wd=1       : best_holdout=4.9248 final=4.9248 (train 5.1995→4.8511)
+
+[probe] ===== reservoir probe summary =====
+[probe]  uniform floor      ln(vocab) = 8.3178
+[probe]  tied-random readout (model's own) holdout NLL = 8.5063
+[probe]  Laplace unigram marginal     holdout NLL = 4.9168
+[probe]  trained-bias-only NULL       holdout NLL = 4.9168
+[probe]  --- weight-decay sweep (best holdout per wd) ---
+[probe]    wd=0.01     best_holdout=4.9520
+[probe]    wd=0.1      best_holdout=4.9528
+[probe]    wd=1        best_holdout=4.9248 <- best
+[probe]  TRAINED readout (best wd=1)  holdout NLL = 4.9248
+[probe]  TRAINED readout (floored)    holdout NLL = 4.9168
+[probe]  TRAINED readout (final)      holdout NLL = 4.9248
+[probe]  contextual gain over bias-only null = 0.0000 nats (+0.00%)
+[probe]  VERDICT: RESERVOIR DEAD — full readout matches the trained-bias-only null; the core's hidden state adds no usable context beyond the token marginal. Path B (train the core) is mandatory.
+[probe]  (1503.3s, 3 wd × 4 epochs)
+{"floor":8.317766,"tied_holdout_nll":8.506331,"marginal_holdout_nll":4.916769,"bias_only_null_nll":4.916769,"best_wd":1,"trained_holdout_nll_best":4.916769,"trained_holdout_nll_final":4.924845,"contextual_gain_nats":0.000000,"contextual_gain_rel":0.000000,"train_positions":149999,"holdout_positions":52271}
+[probe] wrote report "/home/suds/Projects/clob/experiments/2026-06-22_first_run/probe_readout.json"
+[probe] saved readout sidecar (wd=1, final-epoch) → "/home/suds/Projects/clob/experiments/2026-06-22_first_run/readout.bin"

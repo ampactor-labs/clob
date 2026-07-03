@@ -43,10 +43,9 @@ it has mostly noise to compress.
 Do not mistake the running pipeline for a living one. It moves; it does not yet
 grow.
 
-## The one decision that defines its future
+## The decision that defines its future
 
-Before clob can become anything, one fork must be chosen — and it was left
-unmade:
+Before clob can become anything, one fork had to be chosen:
 
 - **A — Reservoir.** The random core is a fixed substrate by design; *all*
   learning is crystallization of local corrections (the code says, in places,
@@ -57,8 +56,15 @@ unmade:
   *then* run crystallization as the continual-compression layer on top. This is
   the manifesto's literal reading.
 
-The manifesto points at B; the code's philosophy leans A. Resolving that
-contradiction is the first real work. Everything downstream depends on it.
+The first real-run artifacts make this less ambiguous now. A reservoir probe in
+`experiments/2026-06-22_first_run/probe_readout.json` fit a trained linear
+readout over frozen-core hidden states and measured zero contextual gain over a
+trained bias-only unigram null. Treat that as a failed Path A probe unless a
+stronger replicated run contradicts it.
+
+So the next build is **Path B**. Untie the readout, implement a checked backward
+pass, train the core on planted patterns, and only then ask crystallization to
+compress what the core has learned.
 
 ## How to judge it honestly
 

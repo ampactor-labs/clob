@@ -3,3 +3,5 @@
 *.clob
 /episodes/
 /modules/
+/experiments/*/episodes/
+/experiments/*/*.bin
