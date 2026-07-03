@@ -1,0 +1,9 @@
+label = "validation_soak"
+date = "2026-07-03"
+git_commit = "see soak.log start banner"
+
+[run]
+summary = "Repeated release tests and periodic smoke first_run validation after short-window SSM BPTT."
+
+[expectations]
+notes = "No failures across the soak; investigate first failing command in soak.log if it aborts."
