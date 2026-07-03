@@ -93,6 +93,66 @@ impl SsmStepGrads {
     }
 }
 
+/// Additive gradient buffers for an SSM window.
+pub struct SsmWindowGrads {
+    pub inputs: Vec<Vec<f32>>,
+    pub initial_state: Vec<f32>,
+    pub in_proj: GradBuffer,
+    pub x_proj: GradBuffer,
+    pub out_proj: GradBuffer,
+    pub a_log: Vec<f32>,
+    pub d_param: Vec<f32>,
+    pub dt_bias: Vec<f32>,
+}
+
+impl SsmWindowGrads {
+    pub fn new(dims: SsmDims, n_steps: usize) -> Self {
+        let d_model = dims.d_model();
+        Self {
+            inputs: vec![vec![0.0; d_model]; n_steps],
+            initial_state: vec![0.0; dims.state_len()],
+            in_proj: GradBuffer::new(d_model, d_model),
+            x_proj: GradBuffer::new(dims.x_proj_rows(), d_model),
+            out_proj: GradBuffer::new(d_model, d_model),
+            a_log: vec![0.0; dims.state_len()],
+            d_param: vec![0.0; dims.n_heads],
+            dt_bias: vec![0.0; dims.n_heads],
+        }
+    }
+
+    fn add_step(&mut self, t: usize, step: &SsmStepGrads) {
+        for (dst, &src) in self.inputs[t].iter_mut().zip(step.input.iter()) {
+            *dst += src;
+        }
+        for (dst, &src) in self.in_proj.grads.iter_mut().zip(step.in_proj.grads.iter()) {
+            *dst += src;
+        }
+        for (dst, &src) in self.x_proj.grads.iter_mut().zip(step.x_proj.grads.iter()) {
+            *dst += src;
+        }
+        for (dst, &src) in self
+            .out_proj
+            .grads
+            .iter_mut()
+            .zip(step.out_proj.grads.iter())
+        {
+            *dst += src;
+        }
+        self.in_proj.n_accumulated += step.in_proj.n_accumulated;
+        self.x_proj.n_accumulated += step.x_proj.n_accumulated;
+        self.out_proj.n_accumulated += step.out_proj.n_accumulated;
+        for (dst, &src) in self.a_log.iter_mut().zip(step.a_log.iter()) {
+            *dst += src;
+        }
+        for (dst, &src) in self.d_param.iter_mut().zip(step.d_param.iter()) {
+            *dst += src;
+        }
+        for (dst, &src) in self.dt_bias.iter_mut().zip(step.dt_bias.iter()) {
+            *dst += src;
+        }
+    }
+}
+
 fn softplus_like_ssm(x: f32) -> f32 {
     if x > 20.0 {
         x
@@ -195,6 +255,54 @@ pub fn ssm_forward_latent(
     linear_forward_latent(out_proj, &cache.y, output);
 }
 
+/// Dense f32 surrogate forward for an SSM window.
+///
+/// Returns per-timestep caches, per-timestep outputs, and the final recurrent
+/// state. This allocates by design; the hot inference path remains in
+/// `src/nn/ssm.rs`.
+pub fn ssm_forward_window_latent(
+    dims: SsmDims,
+    in_proj: &LatentWeights,
+    x_proj: &LatentWeights,
+    out_proj: &LatentWeights,
+    a_log: &[f32],
+    d_param: &[f32],
+    dt_bias: &[f32],
+    inputs: &[Vec<f32>],
+    initial_state: &[f32],
+) -> (Vec<SsmStepCache>, Vec<Vec<f32>>, Vec<f32>) {
+    assert_shapes(dims, in_proj, x_proj, out_proj, a_log, d_param, dt_bias);
+    assert_eq!(initial_state.len(), dims.state_len());
+
+    let mut caches = Vec::with_capacity(inputs.len());
+    let mut outputs = Vec::with_capacity(inputs.len());
+    let mut prev_state = initial_state.to_vec();
+
+    for input in inputs {
+        assert_eq!(input.len(), dims.d_model());
+        let mut cache = SsmStepCache::new(dims);
+        let mut output = vec![0.0f32; dims.d_model()];
+        ssm_forward_latent(
+            dims,
+            in_proj,
+            x_proj,
+            out_proj,
+            a_log,
+            d_param,
+            dt_bias,
+            input,
+            &prev_state,
+            &mut cache,
+            &mut output,
+        );
+        prev_state.copy_from_slice(&cache.next_state);
+        caches.push(cache);
+        outputs.push(output);
+    }
+
+    (caches, outputs, prev_state)
+}
+
 /// Backward for one selective SSM timestep.
 ///
 /// `upstream_next_state` is the BPTT carry from the next timestep. Pass zeros
@@ -283,6 +391,69 @@ pub fn ssm_backward_latent(
     linear_input_grad_latent_add(x_proj, &grads.xbc, &mut grads.z);
     grads.in_proj.accumulate_ste(in_proj, input, &grads.z);
     linear_input_grad_latent_add(in_proj, &grads.z, &mut grads.input);
+}
+
+/// Backward pass through a full SSM window.
+///
+/// `upstream_outputs[t]` is `dL/doutput_t`; `upstream_final_state` is the
+/// through-time carry from the consumer after the final timestep.
+pub fn ssm_backward_window_latent(
+    dims: SsmDims,
+    in_proj: &LatentWeights,
+    x_proj: &LatentWeights,
+    out_proj: &LatentWeights,
+    a_log: &[f32],
+    d_param: &[f32],
+    dt_bias: &[f32],
+    inputs: &[Vec<f32>],
+    initial_state: &[f32],
+    caches: &[SsmStepCache],
+    upstream_outputs: &[Vec<f32>],
+    upstream_final_state: &[f32],
+    grads: &mut SsmWindowGrads,
+) {
+    assert_shapes(dims, in_proj, x_proj, out_proj, a_log, d_param, dt_bias);
+    assert_eq!(inputs.len(), caches.len());
+    assert_eq!(inputs.len(), upstream_outputs.len());
+    assert_eq!(inputs.len(), grads.inputs.len());
+    assert_eq!(initial_state.len(), dims.state_len());
+    assert_eq!(upstream_final_state.len(), dims.state_len());
+
+    let mut future_state_grad = upstream_final_state.to_vec();
+    for t in (0..inputs.len()).rev() {
+        let prev_state = if t == 0 {
+            initial_state
+        } else {
+            caches[t - 1].next_state.as_slice()
+        };
+        let mut step_grads = SsmStepGrads::new(dims);
+        ssm_backward_latent(
+            dims,
+            in_proj,
+            x_proj,
+            out_proj,
+            a_log,
+            d_param,
+            dt_bias,
+            &inputs[t],
+            prev_state,
+            &caches[t],
+            &upstream_outputs[t],
+            &future_state_grad,
+            &mut step_grads,
+        );
+        future_state_grad.copy_from_slice(&step_grads.prev_state);
+        if t == 0 {
+            for (dst, &src) in grads
+                .initial_state
+                .iter_mut()
+                .zip(step_grads.prev_state.iter())
+            {
+                *dst += src;
+            }
+        }
+        grads.add_step(t, &step_grads);
+    }
 }
 
 #[cfg(test)]
@@ -590,6 +761,273 @@ mod tests {
             GradCheckConfig {
                 epsilon: 1e-2,
                 tolerance: 2e-2,
+                denom_floor: 1e-8,
+            },
+        );
+    }
+
+    #[test]
+    fn ssm_window_input_and_initial_state_grads_match_finite_difference() {
+        let dims = dims();
+        let params = ssm_params(dims);
+        let (in_proj, x_proj, out_proj, a_log, d_param, dt_bias) = split_params(&params, dims);
+        let inputs = vec![
+            vec![0.6f32, -0.3, 0.8, -0.5],
+            vec![-0.2f32, 0.5, -0.7, 0.4],
+            vec![0.9f32, -0.1, 0.3, -0.6],
+        ];
+        let initial_state = vec![0.2f32, -0.1, 0.3, -0.4];
+        let targets = [
+            vec![10.0f32, -7.5, 5.0, -2.5],
+            vec![-3.0f32, 4.0, -5.0, 6.0],
+            vec![2.0f32, -4.0, 6.0, -8.0],
+        ];
+        let final_state_grad = vec![1.0f32, -0.75, 0.5, -0.25];
+        let mut flat = Vec::new();
+        for input in inputs.iter() {
+            flat.extend_from_slice(input);
+        }
+        flat.extend_from_slice(&initial_state);
+
+        assert_gradient_close(
+            &flat,
+            |p| {
+                let mut cursor = 0usize;
+                let mut window_inputs = Vec::with_capacity(inputs.len());
+                for _ in 0..inputs.len() {
+                    window_inputs.push(p[cursor..cursor + dims.d_model()].to_vec());
+                    cursor += dims.d_model();
+                }
+                let init = &p[cursor..cursor + dims.state_len()];
+                let (caches, outputs, _final_state) = ssm_forward_window_latent(
+                    dims,
+                    &in_proj,
+                    &x_proj,
+                    &out_proj,
+                    &a_log,
+                    &d_param,
+                    &dt_bias,
+                    &window_inputs,
+                    init,
+                );
+                let output_loss: f64 = outputs
+                    .iter()
+                    .zip(targets.iter())
+                    .map(|(output, target)| {
+                        output
+                            .iter()
+                            .zip(target.iter())
+                            .map(|(&y, &t)| {
+                                let e = y as f64 - t as f64;
+                                0.5 * e * e
+                            })
+                            .sum::<f64>()
+                    })
+                    .sum();
+                let future_loss: f64 = caches
+                    .last()
+                    .unwrap()
+                    .next_state
+                    .iter()
+                    .zip(final_state_grad.iter())
+                    .map(|(&s, &g)| s as f64 * g as f64)
+                    .sum();
+                output_loss + future_loss
+            },
+            |p, out| {
+                let mut cursor = 0usize;
+                let mut window_inputs = Vec::with_capacity(inputs.len());
+                for _ in 0..inputs.len() {
+                    window_inputs.push(p[cursor..cursor + dims.d_model()].to_vec());
+                    cursor += dims.d_model();
+                }
+                let init = &p[cursor..cursor + dims.state_len()];
+                let (caches, outputs, _final_state) = ssm_forward_window_latent(
+                    dims,
+                    &in_proj,
+                    &x_proj,
+                    &out_proj,
+                    &a_log,
+                    &d_param,
+                    &dt_bias,
+                    &window_inputs,
+                    init,
+                );
+                let upstream_outputs: Vec<Vec<f32>> = outputs
+                    .iter()
+                    .zip(targets.iter())
+                    .map(|(output, target)| {
+                        output
+                            .iter()
+                            .zip(target.iter())
+                            .map(|(&y, &t)| y - t)
+                            .collect()
+                    })
+                    .collect();
+                let mut grads = SsmWindowGrads::new(dims, window_inputs.len());
+                ssm_backward_window_latent(
+                    dims,
+                    &in_proj,
+                    &x_proj,
+                    &out_proj,
+                    &a_log,
+                    &d_param,
+                    &dt_bias,
+                    &window_inputs,
+                    init,
+                    &caches,
+                    &upstream_outputs,
+                    &final_state_grad,
+                    &mut grads,
+                );
+                let mut out_cursor = 0usize;
+                for input_grad in grads.inputs.iter() {
+                    for &g in input_grad.iter() {
+                        out[out_cursor] = g as f64;
+                        out_cursor += 1;
+                    }
+                }
+                for &g in grads.initial_state.iter() {
+                    out[out_cursor] = g as f64;
+                    out_cursor += 1;
+                }
+                assert_eq!(out_cursor, out.len());
+            },
+            GradCheckConfig {
+                epsilon: 1e-3,
+                tolerance: 1e-2,
+                denom_floor: 1e-8,
+            },
+        );
+    }
+
+    #[test]
+    fn ssm_window_params_match_finite_difference() {
+        let dims = dims();
+        let params = ssm_params(dims);
+        let inputs = vec![
+            vec![0.6f32, -0.3, 0.8, -0.5],
+            vec![-0.2f32, 0.5, -0.7, 0.4],
+            vec![0.9f32, -0.1, 0.3, -0.6],
+        ];
+        let initial_state = vec![0.2f32, -0.1, 0.3, -0.4];
+        let targets = [
+            vec![10.0f32, -7.5, 5.0, -2.5],
+            vec![-3.0f32, 4.0, -5.0, 6.0],
+            vec![2.0f32, -4.0, 6.0, -8.0],
+        ];
+        let final_state_grad = vec![1.0f32, -0.75, 0.5, -0.25];
+
+        assert_gradient_close(
+            &params,
+            |p| {
+                let (in_proj, x_proj, out_proj, a_log, d_param, dt_bias) = split_params(p, dims);
+                let (caches, outputs, _final_state) = ssm_forward_window_latent(
+                    dims,
+                    &in_proj,
+                    &x_proj,
+                    &out_proj,
+                    &a_log,
+                    &d_param,
+                    &dt_bias,
+                    &inputs,
+                    &initial_state,
+                );
+                let output_loss: f64 = outputs
+                    .iter()
+                    .zip(targets.iter())
+                    .map(|(output, target)| {
+                        output
+                            .iter()
+                            .zip(target.iter())
+                            .map(|(&y, &t)| {
+                                let e = y as f64 - t as f64;
+                                0.5 * e * e
+                            })
+                            .sum::<f64>()
+                    })
+                    .sum();
+                let future_loss: f64 = caches
+                    .last()
+                    .unwrap()
+                    .next_state
+                    .iter()
+                    .zip(final_state_grad.iter())
+                    .map(|(&s, &g)| s as f64 * g as f64)
+                    .sum();
+                output_loss + future_loss
+            },
+            |p, out| {
+                let (in_proj, x_proj, out_proj, a_log, d_param, dt_bias) = split_params(p, dims);
+                let (caches, outputs, _final_state) = ssm_forward_window_latent(
+                    dims,
+                    &in_proj,
+                    &x_proj,
+                    &out_proj,
+                    &a_log,
+                    &d_param,
+                    &dt_bias,
+                    &inputs,
+                    &initial_state,
+                );
+                let upstream_outputs: Vec<Vec<f32>> = outputs
+                    .iter()
+                    .zip(targets.iter())
+                    .map(|(output, target)| {
+                        output
+                            .iter()
+                            .zip(target.iter())
+                            .map(|(&y, &t)| y - t)
+                            .collect()
+                    })
+                    .collect();
+                let mut grads = SsmWindowGrads::new(dims, inputs.len());
+                ssm_backward_window_latent(
+                    dims,
+                    &in_proj,
+                    &x_proj,
+                    &out_proj,
+                    &a_log,
+                    &d_param,
+                    &dt_bias,
+                    &inputs,
+                    &initial_state,
+                    &caches,
+                    &upstream_outputs,
+                    &final_state_grad,
+                    &mut grads,
+                );
+
+                let mut cursor = 0usize;
+                for &g in grads.in_proj.grads.iter() {
+                    out[cursor] = g as f64;
+                    cursor += 1;
+                }
+                for &g in grads.x_proj.grads.iter() {
+                    out[cursor] = g as f64;
+                    cursor += 1;
+                }
+                for &g in grads.out_proj.grads.iter() {
+                    out[cursor] = g as f64;
+                    cursor += 1;
+                }
+                for &g in grads.a_log.iter() {
+                    out[cursor] = g as f64;
+                    cursor += 1;
+                }
+                for &g in grads.d_param.iter() {
+                    out[cursor] = g as f64;
+                    cursor += 1;
+                }
+                for &g in grads.dt_bias.iter() {
+                    out[cursor] = g as f64;
+                    cursor += 1;
+                }
+                assert_eq!(cursor, out.len());
+            },
+            GradCheckConfig {
+                epsilon: 1e-2,
+                tolerance: 3e-2,
                 denom_floor: 1e-8,
             },
         );

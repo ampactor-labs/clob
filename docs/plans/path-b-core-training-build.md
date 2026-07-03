@@ -25,8 +25,8 @@ Already present:
 - `src/learn/grad.rs`: latent f32 weights behind ternary matrices and STE
   gradient accumulation for `dL/dW`; checked linear input gradients; checked
   dense unembedding/cross-entropy/embedding local backwards.
-- `src/learn/ssm.rs`: checked one-step selective SSM forward/backward with
-  state-gradient carry.
+- `src/learn/ssm.rs`: checked one-step and short-window selective SSM
+  forward/backward with state-gradient carry.
 - `src/learn/optimizer.rs`: AdamW over latent weights with re-ternarization.
 - `src/learn/replay.rs`: prioritized replay helpers.
 - `CoreModel::decode_step_training`: captures MoE router state for the current
@@ -37,7 +37,7 @@ Missing:
 - `dL/dx` for every trainable layer beyond the checked
   linear/RMSNorm/GLU/MLGRU/readout leaves.
 - Per-timestep activation capture for truncated BPTT.
-- Short-window BPTT composition through the selective SSM recurrence.
+- Full-model training tape and end-to-end tiny-model gradient check.
 - Untied trainable readout.
 - A supervised `train` subcommand with manifests and checkpoints.
 
@@ -91,12 +91,12 @@ through-time backward for the selective recurrence over a short window.
 
 The check must include:
 
-- projection latent weights. **Done for one step.**
-- `a_log`. **Done for one step.**
-- `dt_bias`. **Done for one step.**
-- `d_param`. **Done for one step.**
-- state carry from `t + 1` back to `t`. **Done for one step; still needs a
-  multi-step window check.**
+- projection latent weights. **Done for one step and short window.**
+- `a_log`. **Done for one step and short window.**
+- `dt_bias`. **Done for one step and short window.**
+- `d_param`. **Done for one step and short window.**
+- state carry from `t + 1` back to `t`. **Done for one step and short
+  window.**
 
 Do not proceed to model training until a tiny SSM finite-difference check is
 green. Most plausible silent failures live here.
