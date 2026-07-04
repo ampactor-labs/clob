@@ -188,6 +188,40 @@ impl Block {
         }
     }
 
+    /// Total recurrent-state dimension of this block: SSM state plus, for
+    /// dense blocks, the MLGRU state. MoE blocks carry only SSM state.
+    pub fn state_dim(&self) -> usize {
+        let mut d = self.ssm.state().len();
+        if let ChannelMixer::Dense { mlgru, .. } = &self.channel_mixer {
+            d += mlgru.state().len();
+        }
+        d
+    }
+
+    /// Append this block's full recurrent state to `out` (SSM first, then
+    /// MLGRU for dense blocks). The layout is the read half of the
+    /// state-space API; `import_state` consumes the same layout.
+    pub fn export_state(&self, out: &mut Vec<f32>) {
+        out.extend_from_slice(self.ssm.state());
+        if let ChannelMixer::Dense { mlgru, .. } = &self.channel_mixer {
+            out.extend_from_slice(mlgru.state());
+        }
+    }
+
+    /// Restore this block's recurrent state from a slice produced by
+    /// `export_state`. Returns the number of floats consumed.
+    pub fn import_state(&mut self, src: &[f32]) -> usize {
+        let n_ssm = self.ssm.state().len();
+        self.ssm.set_state(&src[..n_ssm]);
+        let mut consumed = n_ssm;
+        if let ChannelMixer::Dense { mlgru, .. } = &mut self.channel_mixer {
+            let n_gru = mlgru.state().len();
+            mlgru.set_state(&src[consumed..consumed + n_gru]);
+            consumed += n_gru;
+        }
+        consumed
+    }
+
     pub fn is_moe(&self) -> bool {
         matches!(self.channel_mixer, ChannelMixer::MoE { .. })
     }

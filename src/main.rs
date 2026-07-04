@@ -407,6 +407,35 @@ enum Commands {
         #[arg(long, default_value_t = 8)]
         n_clusters: usize,
     },
+    /// Measure the core's dynamical regime: largest Lyapunov exponent λ₁
+    /// of the token-driven state dynamics, by twin-trajectory (Benettin)
+    /// estimation. λ₁ < 0 bounds state memory at 1/|λ₁| tokens; λ₁ ≈ 0 is
+    /// the edge-of-chaos regime where context can persist.
+    Regime {
+        #[arg(long)]
+        model: PathBuf,
+        /// Drive corpus (text, or a pre-encoded `.tokens` cache). Wraps if
+        /// shorter than warmup + tokens.
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Measured steps after warmup.
+        #[arg(long, default_value_t = 4096)]
+        tokens: usize,
+        /// Tokens driven before the perturbation is injected.
+        #[arg(long, default_value_t = 256)]
+        warmup: usize,
+        /// Perturbation norm on the flat state vector.
+        #[arg(long, default_value_t = 1e-4)]
+        eps: f32,
+        /// Root seed (perturbation directions derive from it).
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Write the full report as TOML (with a manifest sidecar).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Compile crystallized modules to native code (demo: ELF emission).
     Compile {
         #[arg(long, default_value = "episodes")]
@@ -556,6 +585,9 @@ fn main() {
                     std::process::exit(2);
                 }
             }
+        }
+        Commands::Regime { model, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
+            cmd_regime(&model, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
         }
         Commands::Compile { memory_dir: _, modules_dir } => {
             cmd_compile(&modules_dir);
@@ -2176,6 +2208,70 @@ fn next_module_id(dir: &Path) -> u64 {
         }
     }
     max_id.map(|m| m + 1).unwrap_or(0)
+}
+
+/// Measure the largest Lyapunov exponent of the model's token-driven state
+/// dynamics. Loads the model twice (twin trajectories need independent
+/// recurrent state), drives both through the corpus in lockstep, perturbs
+/// one by `eps`, and averages the per-step log stretch.
+#[allow(clippy::too_many_arguments)]
+fn cmd_regime(
+    model_path: &PathBuf, corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>,
+    n_tokens: usize, warmup: usize, eps: f32, seed: u64, out: &Option<PathBuf>,
+) {
+    use clob::dynamics::lyapunov::{self, TwinSystem};
+    use clob::dynamics::{ModelTwin, RegimeReport};
+    use clob::util::seed::SeedTree;
+
+    let tokenizer = load_tokenizer(tokenizer_path);
+    let model_a = io::loader::load_model(model_path).expect("failed to load model");
+    let model_b = io::loader::load_model(model_path).expect("failed to load model");
+    assert_vocab_compatible(&tokenizer, &model_a.config);
+
+    let tokens = load_or_encode_tokens(corpus_path, &tokenizer, &model_a.config);
+    if tokens.is_empty() {
+        eprintln!("[regime] empty corpus: {:?}", corpus_path);
+        std::process::exit(2);
+    }
+
+    let mut twin = ModelTwin::new(model_a, model_b, tokens);
+    println!(
+        "[regime] state_dim={} warmup={} steps={} eps={}",
+        twin.state_dim(), warmup, n_tokens, eps,
+    );
+    twin.warmup(warmup);
+
+    let mut rng = SeedTree::new(seed).child("regime-perturbation");
+    let cfg = lyapunov::LyapunovConfig { eps, n_steps: n_tokens };
+    let est = lyapunov::estimate(&mut twin, &cfg, &mut rng);
+    let report = RegimeReport::from_estimate(&est, warmup, eps, seed);
+
+    println!(
+        "[regime] lambda1 = {:+.4} nats/token ({}), halves {:+.4} / {:+.4}",
+        report.lambda1_nats_per_token, report.regime,
+        report.lambda1_first_half, report.lambda1_second_half,
+    );
+    match report.memory_horizon_tokens {
+        Some(h) => println!(
+            "[regime] state memory horizon ≈ {:.1} tokens (perturbations e-fold away)", h,
+        ),
+        None => println!(
+            "[regime] non-contractive: perturbations persist or grow; no finite horizon",
+        ),
+    }
+
+    if let Some(out_path) = out {
+        let toml_str = toml::to_string_pretty(&report).expect("serialize regime report");
+        std::fs::write(out_path, toml_str).expect("write regime report");
+        let manifest = clob::config::manifest::RunManifest::new("regime")
+            .with_seed(seed)
+            .with_input("model", model_path)
+            .with_input("corpus", corpus_path);
+        if let Err(e) = manifest.save_sidecar(out_path) {
+            eprintln!("[regime] manifest write failed: {}", e);
+        }
+        println!("[regime] report written to {:?}", out_path);
+    }
 }
 
 fn cmd_compile(modules_dir: &PathBuf) {

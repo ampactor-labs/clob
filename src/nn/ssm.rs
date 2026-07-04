@@ -85,6 +85,16 @@ impl SelectiveSSM {
     pub fn reset_state(&mut self) { self.state.fill(0.0); }
     pub fn state(&self) -> &[f32] { &self.state }
 
+    /// Overwrite the recurrent state. Length must be `n_heads × d_state`.
+    /// This is the write half of the state-space API: dynamics probes
+    /// (Lyapunov twin trajectories) and future BPTT window detachment both
+    /// need to place the recurrence at an exact point in state space.
+    pub fn set_state(&mut self, state: &[f32]) {
+        assert_eq!(state.len(), self.state.len(),
+            "ssm state len {} != expected {}", state.len(), self.state.len());
+        self.state.copy_from_slice(state);
+    }
+
     pub fn in_proj(&self) -> &TernaryLinear { &self.in_proj }
     pub fn x_proj(&self) -> &TernaryLinear { &self.x_proj }
     pub fn dt_proj(&self) -> &TernaryLinear { &self._dt_proj }

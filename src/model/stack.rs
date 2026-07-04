@@ -358,6 +358,36 @@ impl CoreModel {
         self.last_hidden.zero_();
     }
 
+    /// Total recurrent-state dimension across all blocks. The model's
+    /// entire memory of the past lives in this many floats; everything
+    /// else (`last_hidden`, scratch buffers) is recomputed each step.
+    pub fn state_dim(&self) -> usize {
+        self.blocks.iter().map(|b| b.state_dim()).sum()
+    }
+
+    /// Snapshot the full recurrent state as one flat vector (block-major,
+    /// SSM before MLGRU within each block). This is the point in state
+    /// space the model currently occupies — the object of study for
+    /// dynamics probes, and the thing BPTT windows detach.
+    pub fn export_state(&self) -> Vec<f32> {
+        let mut out = Vec::with_capacity(self.state_dim());
+        for block in &self.blocks {
+            block.export_state(&mut out);
+        }
+        out
+    }
+
+    /// Restore the recurrent state from a vector produced by
+    /// `export_state`. Panics if the length doesn't match `state_dim()`.
+    pub fn import_state(&mut self, state: &[f32]) {
+        assert_eq!(state.len(), self.state_dim(),
+            "state len {} != state_dim {}", state.len(), self.state_dim());
+        let mut offset = 0;
+        for block in self.blocks.iter_mut() {
+            offset += block.import_state(&state[offset..]);
+        }
+    }
+
     /// Reference to dispatch.
     pub fn dispatch(&self) -> &KernelDispatch {
         &self.dispatch

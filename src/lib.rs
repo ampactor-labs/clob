@@ -18,6 +18,7 @@ pub mod model;
 pub mod io;
 pub mod memory;
 pub mod crystal;
+pub mod dynamics;
 pub mod token;
 pub mod perceive;
 pub mod learn;

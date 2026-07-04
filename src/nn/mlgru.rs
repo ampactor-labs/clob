@@ -47,6 +47,13 @@ impl MLGRU {
     pub fn reset_state(&mut self) { self.state.fill(0.0); }
     pub fn state(&self) -> &[f32] { &self.state }
 
+    /// Overwrite the recurrent state. Length must be `d_model`.
+    pub fn set_state(&mut self, state: &[f32]) {
+        assert_eq!(state.len(), self.state.len(),
+            "mlgru state len {} != expected {}", state.len(), self.state.len());
+        self.state.copy_from_slice(state);
+    }
+
     pub fn w_f(&self) -> &TernaryLinear { &self.w_f }
     pub fn w_c(&self) -> &TernaryLinear { &self.w_c }
     pub fn w_o(&self) -> &TernaryLinear { &self.w_o }
