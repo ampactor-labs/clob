@@ -310,6 +310,7 @@ mod tests {
             actual_token: actual,
             prediction_error: 0.6,
             consumed: false,
+            future: vec![actual],
         }
     }
 

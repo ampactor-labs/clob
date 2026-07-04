@@ -406,6 +406,15 @@ enum Commands {
         /// Number of clusters (k) for k-means.
         #[arg(long, default_value_t = 8)]
         n_clusters: usize,
+        /// Refine clusters by predictive equivalence before distillation:
+        /// split clusters whose members disagree about the future, merge
+        /// clusters that predict the same next token. Approximates
+        /// causal-state (ε-machine) reconstruction; see crystal::causal.
+        #[arg(long)]
+        causal: bool,
+        /// Future-prefix length used as the causal split key.
+        #[arg(long, default_value_t = 4)]
+        causal_horizon: usize,
     },
     /// Measure the core's dynamical regime: largest Lyapunov exponent λ₁
     /// of the token-driven state dynamics, by twin-trajectory (Benettin)
@@ -576,10 +585,14 @@ fn main() {
         Commands::Calibrate { model, corpus, tokenizer, output, lr, epochs, max_tokens } => {
             cmd_calibrate(&model, &corpus, &tokenizer, &output, lr, epochs, max_tokens);
         }
-        Commands::Crystal { memory_dir, modules_dir, model, d_model, n_clusters } => {
+        Commands::Crystal { memory_dir, modules_dir, model, d_model, n_clusters, causal, causal_horizon } => {
+            let causal_cfg = causal.then(|| clob::crystal::causal::CausalConfig {
+                horizon: causal_horizon,
+                ..Default::default()
+            });
             match (model, d_model) {
-                (Some(m), _) => cmd_crystal_with_model(&memory_dir, &modules_dir, &m, n_clusters),
-                (None, Some(d)) => cmd_crystal(&memory_dir, &modules_dir, d, n_clusters),
+                (Some(m), _) => cmd_crystal_with_model(&memory_dir, &modules_dir, &m, n_clusters, causal_cfg),
+                (None, Some(d)) => cmd_crystal(&memory_dir, &modules_dir, d, n_clusters, causal_cfg),
                 (None, None) => {
                     eprintln!("[crystal] provide --model (preferred) or --d-model");
                     std::process::exit(2);
@@ -647,6 +660,12 @@ fn format_params(count: usize) -> String {
 fn now_nanos() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
 }
+
+/// Tokens of observed future recorded per episode (`future[0]` is the
+/// actual next token). Eight tokens is enough for the causal-state
+/// refinement's default horizon of 4 with room to raise it, at a cost of
+/// 32 bytes per episode.
+const EPISODE_FUTURE_HORIZON: usize = 8;
 
 /// Hard-fail if the tokenizer produces ids the model can't represent.
 /// No silent clamping — a collapsed vocab is a poisoned training signal.
@@ -1219,10 +1238,15 @@ fn cmd_ingest(
             // Context: up to 32 tokens ending at tokens[i]
             let ctx_start = i.saturating_sub(31);
             let context: Vec<u32> = tokens[ctx_start..=i].to_vec();
+            // Future: the observed continuation starting at the actual
+            // next token, up to EPISODE_FUTURE_HORIZON. The causal-state
+            // refinement clusters episodes by this path.
+            let fut_end = (i + 1 + EPISODE_FUTURE_HORIZON).min(tokens.len());
+            let future: Vec<u32> = tokens[i + 1..fut_end].to_vec();
             let episode = Episode::new(
                 now_nanos(), context,
                 model.last_hidden().data().to_vec(),
-                energy, top_k, actual,
+                energy, top_k, actual, future,
             );
             if let Err(e) = memory.store(&episode) {
                 eprintln!("[ingest] store error: {}", e);
@@ -1544,10 +1568,12 @@ fn cmd_active_ingest(
                 };
                 let ctx_start = t.saturating_sub(31);
                 let context: Vec<u32> = winner_tokens[ctx_start..=t].to_vec();
+                let fut_end = (t + 1 + EPISODE_FUTURE_HORIZON).min(winner_tokens.len());
+                let future: Vec<u32> = winner_tokens[t + 1..fut_end].to_vec();
                 let episode = Episode::new(
                     now_nanos(), context,
                     model.last_hidden().data().to_vec(),
-                    energy, top_k, winner_tokens[t + 1],
+                    energy, top_k, winner_tokens[t + 1], future,
                 );
                 let _ = memory.store(&episode);
             }
@@ -2134,11 +2160,14 @@ fn cmd_calibrate_confidence(
     }
 }
 
-fn cmd_crystal(memory_dir: &PathBuf, modules_dir: &PathBuf, d_model: usize, n_clusters: usize) {
+fn cmd_crystal(
+    memory_dir: &PathBuf, modules_dir: &PathBuf, d_model: usize, n_clusters: usize,
+    causal: Option<clob::crystal::causal::CausalConfig>,
+) {
     eprintln!("[crystal] Opening memory {:?}", memory_dir);
     let memory = EpisodicMemory::open(memory_dir, usize::MAX).expect("failed to open memory");
     let mut engine = CrystallizationEngine::new(d_model, CrystalConfig {
-        n_clusters, ..CrystalConfig::default()
+        n_clusters, causal, ..CrystalConfig::default()
     });
     engine.set_next_id(next_module_id(modules_dir));
     let before = engine.n_modules();
@@ -2157,7 +2186,10 @@ fn cmd_crystal(memory_dir: &PathBuf, modules_dir: &PathBuf, d_model: usize, n_cl
     eprintln!("[crystal] {} new modules saved to {:?}", saved, modules_dir);
 }
 
-fn cmd_crystal_with_model(memory_dir: &PathBuf, modules_dir: &PathBuf, model_path: &PathBuf, n_clusters: usize) {
+fn cmd_crystal_with_model(
+    memory_dir: &PathBuf, modules_dir: &PathBuf, model_path: &PathBuf, n_clusters: usize,
+    causal: Option<clob::crystal::causal::CausalConfig>,
+) {
     eprintln!("[crystal] Loading model {:?}", model_path);
     let model = io::loader::load_model(model_path).expect("failed to load model");
     eprintln!("[crystal] Opening memory {:?}", memory_dir);
@@ -2168,7 +2200,7 @@ fn cmd_crystal_with_model(memory_dir: &PathBuf, modules_dir: &PathBuf, model_pat
     let embed = model.embed_table();
 
     let mut engine = CrystallizationEngine::new(d_model, CrystalConfig {
-        n_clusters, ..CrystalConfig::default()
+        n_clusters, causal, ..CrystalConfig::default()
     });
     // Continue numbering from the highest existing module id on disk, so cycles
     // accumulate rather than overwrite.

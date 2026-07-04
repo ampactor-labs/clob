@@ -5,6 +5,7 @@
 
 pub mod detector;
 pub mod cluster;
+pub mod causal;
 pub mod distill;
 pub mod crystallize;
 pub mod module;

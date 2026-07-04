@@ -25,10 +25,23 @@ pub struct Episode {
     pub prediction_error: f32,
     /// Whether this episode has been consumed by crystallization.
     pub consumed: bool,
+    /// The observed future path from this moment: `future[0]` is
+    /// `actual_token`, followed by the tokens that came after it (up to
+    /// the recorder's horizon). Two episodes with the same future are
+    /// predictively equivalent evidence — the causal-state refinement in
+    /// `crystal::causal` clusters on this, not on where the hidden state
+    /// happens to sit. Old ring files predate this field; bincode is not
+    /// self-describing, so they deserialize as `None` and are skipped —
+    /// acceptable because the ring is per-run scratch, not an artifact.
+    #[serde(default)]
+    pub future: Vec<u32>,
 }
 
 impl Episode {
-    /// Create a new episode.
+    /// Create a new episode. `future` is the observed continuation
+    /// starting at `actual_token` (so `future[0] == actual_token` when
+    /// non-empty); pass at least the one-token future the recorder always
+    /// knows.
     pub fn new(
         timestamp: u64,
         context: Vec<u32>,
@@ -36,7 +49,12 @@ impl Episode {
         energy: f32,
         predictions: Vec<(u32, f32)>,
         actual_token: u32,
+        future: Vec<u32>,
     ) -> Self {
+        debug_assert!(
+            future.is_empty() || future[0] == actual_token,
+            "future[0] must be actual_token",
+        );
         let pred_prob = predictions.iter()
             .find(|(id, _)| *id == actual_token)
             .map(|(_, p)| *p)
@@ -51,6 +69,18 @@ impl Episode {
             actual_token,
             prediction_error: 1.0 - pred_prob,
             consumed: false,
+            future,
+        }
+    }
+
+    /// The future path used for predictive-equivalence comparison,
+    /// truncated to `horizon`. Falls back to the one-step future
+    /// (`actual_token`) for episodes recorded without a future window.
+    pub fn future_prefix(&self, horizon: usize) -> Vec<u32> {
+        if self.future.is_empty() {
+            vec![self.actual_token]
+        } else {
+            self.future[..self.future.len().min(horizon.max(1))].to_vec()
         }
     }
 
@@ -73,6 +103,7 @@ impl Episode {
         self.predictions.len() * 8 +
         4 + // actual_token
         4 + // prediction_error
-        1   // consumed
+        1 + // consumed
+        self.future.len() * 4
     }
 }

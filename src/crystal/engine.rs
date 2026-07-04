@@ -4,6 +4,7 @@
 //! clusters, distills patterns, crystallizes into ternary modules,
 //! and registers them for routing.
 
+use crate::crystal::causal::{self, CausalConfig};
 use crate::crystal::cluster;
 use crate::crystal::crystallize;
 use crate::crystal::distill;
@@ -25,6 +26,11 @@ pub struct CrystalConfig {
     pub max_kmeans_iters: usize,
     /// Activation threshold for module routing (cosine similarity).
     pub activation_threshold: f32,
+    /// When set, refine the k-means partition by predictive equivalence
+    /// (split clusters along future fault lines, merge clusters with
+    /// indistinguishable next-token behavior) before distillation. See
+    /// `crystal::causal`.
+    pub causal: Option<CausalConfig>,
 }
 
 impl Default for CrystalConfig {
@@ -35,6 +41,7 @@ impl Default for CrystalConfig {
             n_clusters: 8,
             max_kmeans_iters: 20,
             activation_threshold: 0.3,
+            causal: None,
         }
     }
 }
@@ -96,14 +103,24 @@ impl CrystallizationEngine {
 
         eprintln!("[crystal] Processing {} unconsumed episodes", episodes.len());
 
-        // Cluster
-        let clusters = cluster::cluster_episodes(
+        // Cluster by hidden state, then optionally refine by predictive
+        // equivalence — episodes with the same future belong together no
+        // matter where the core's geometry put them.
+        let mut clusters = cluster::cluster_episodes(
             &episodes,
             self.config.n_clusters,
             self.config.max_kmeans_iters,
         );
-
-        eprintln!("[crystal] Found {} clusters", clusters.len());
+        let n_state_clusters = clusters.len();
+        if let Some(ccfg) = &self.config.causal {
+            clusters = causal::refine(clusters, &episodes, ccfg);
+            eprintln!(
+                "[crystal] Found {} clusters ({} by state, causal-refined)",
+                clusters.len(), n_state_clusters,
+            );
+        } else {
+            eprintln!("[crystal] Found {} clusters", clusters.len());
+        }
 
         let mut new_modules = 0;
         let mut consumed_timestamps = Vec::new();
