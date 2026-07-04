@@ -66,6 +66,16 @@ So the next build is **Path B**. Untie the readout, implement a checked backward
 pass, train the core on planted patterns, and only then ask crystallization to
 compress what the core has learned.
 
+Since that fork was written, the probe's verdict acquired a mechanism. The
+dynamics instrument (`clob regime`, 2026-07-04) measures the random core at
+λ₁ = −1.23 nats/token: its state erases a perturbation in under one token, so
+the past physically never reached the readout. The same day, re-partitioning
+episodes by their *futures* instead of their hidden-state geometry
+(`clob crystal --causal`) produced the first four modules this pipeline has
+ever crystallized. The second thesis behind both changes is `ATTRACTOR.md` —
+read it after the manifesto. Its bets (6–8) are pre-registered like the
+first five, and they wait on Path B just the same.
+
 ## How to judge it honestly
 
 The pass/kill numbers are pre-registered in `ARCHITECTURE.md` (Part V →

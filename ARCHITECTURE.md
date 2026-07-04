@@ -813,3 +813,16 @@ now exist. The data that would move any bet from "untested" to
 "confirmed" or "falsified" is the next thing. The thresholds that decide
 *which way* each one moves are pre-registered in Part V (*Falsification
 thresholds*) — fixed before the run, not after.
+
+**Update (2026-07-04).** The bet registry now spans two documents: Bets
+1–5 here, Bets 6–8 in `ATTRACTOR.md` — the second thesis, which
+relocates the object of compression from the data stream to the past
+compressed into state (causal states, measured dynamical regime,
+predictive objective). Two of its receipts bear on this document
+directly: the first real run's zero-crystallization result is now
+explained mechanically (`clob regime` measures the random core at
+λ₁ = −1.23 nats/token — a state-memory horizon under one token, so no
+context survived to be read), and the causal-state refinement of the
+distill partition produced the loop's first-ever crystallized modules
+from real pipeline flow. Bet 2's judgment still waits on a trained
+core, as it should.

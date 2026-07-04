@@ -18,12 +18,20 @@ compiled ternary modules and discards the raw episodes once compressed.
 See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 "unsurpassable" rhetoric of earlier drafts).
 
-## State (updated 2026-07-03 — first real run + reservoir probe completed)
+## State (updated 2026-07-04 — the attractor track landed)
 
-**Branch:** `main`, 18 commits ahead of `origin/main` (not pushed), with
-local cleanup/docs work in progress.
+**Branch:** `main`, 22+ commits ahead of `origin/main` (not pushed).
 
 **Commit history (most recent first):**
+- (2026-07-04) — ATTRACTOR.md: second thesis (compress the past, not the
+  stream) + Bets 6–8 pre-registered + doc cross-refs
+- `fb697a8` — Crystallize by predictive equivalence: causal-state refinement
+- `6670b2f` — Make symbolic synthesis tractable at model scale
+- `1be39d7` — Add dynamics instrument: measured Lyapunov regime
+- `b746344` — Add validation soak experiment
+- `0c55d8b` — Check short-window SSM BPTT
+- `be9cae3` — Add checked one-step SSM backward
+- `dd31165` — Advance Path B gradient groundwork
 - `d0e900a` — Add IF_FOUND.md: the kernel's honest self-record
 - `271ab2a` — Add scripts/first_run.sh: one-command unattended real-data run
 - `a70dbce` — Harden the .tokens cache and peer handshake; audit runtime unwraps
@@ -60,6 +68,34 @@ The next gate is no longer "run first_run"; it is **Path B core training**.
 See `docs/experiments/reservoir-probe.md` and
 `docs/plans/path-b-core-training-build.md`.
 
+**The attractor track (2026-07-04).** `ATTRACTOR.md` is the second thesis:
+the object of compression is the past-into-state, not the data stream. Three
+mechanisms shipped with it, all tested, none requiring a trained core to
+exist but all judged after one does:
+
+- **Regime instrument** — `clob regime` measures the core's largest Lyapunov
+  exponent by twin trajectories (`src/dynamics/`). First measurement: the
+  random small core sits at λ₁ = −1.23 nats/token, a state-memory horizon of
+  0.8 tokens — the reservoir probe's null result, explained mechanically.
+  During Path B training, run it per checkpoint; Bet 7 pre-registers what
+  the trajectory of λ₁ must look like for the edge-of-chaos story to hold.
+  The state export/import API underneath it (`CoreModel::{export,import}_state`)
+  is the same API Path B Phase 3 needs for BPTT window detachment.
+- **Causal-state distill** — `clob crystal --causal` splits clusters along
+  future fault lines and merges predictively identical ones
+  (`src/crystal/causal.rs`). On the diagnostic corpus it took the same 318
+  episodes from 0 crystallized modules (state-only, as in every prior run)
+  to 4 — the loop's first modules from real pipeline flow — with an
+  equal-compute A/B whisper of −0.27% NLL. Judged for real by Bet 6 at Path
+  B Phases 5–6, causal arm vs state-only arm.
+- **Predictive objective** — Episodes now record an 8-token `future`; the
+  `clob train` command (Path B Phase 4) gets a horizon-weighted loss option,
+  pre-registered as Bet 8, so the trainer buys the future rather than only
+  the next token.
+
+Path B remains the critical path, unchanged. The attractor track is its
+instrumentation and its judgment criteria, not a detour.
+
 **End-to-end pipeline verified** on synthetic weights against
 `tests/data/eval_corpus.txt` (1.5 KB smoke corpus):
 ```
@@ -75,6 +111,8 @@ In rough order:
 1. **`PLAN.md`** (this file) — orientation, state, roadmap.
 2. **`ARCHITECTURE.md`** — the design manifesto, Part V now names five
    falsifiable bets and what would break each.
+2b. **`ATTRACTOR.md`** — the second thesis (compress the past into state:
+   causal states, measured regime, predictive objective) and Bets 6–8.
 3. **`src/lib.rs`** — module tree; every subsystem has its own dir.
 4. **`src/main.rs`** — every subcommand (Cli + command dispatch).
 5. **`src/crystal/{distill,crystallize,engine,synth,module}.rs`** — the
