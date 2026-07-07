@@ -586,6 +586,13 @@ fn main() {
             cmd_calibrate(&model, &corpus, &tokenizer, &output, lr, epochs, max_tokens);
         }
         Commands::Crystal { memory_dir, modules_dir, model, d_model, n_clusters, causal, causal_horizon } => {
+            if causal && causal_horizon > EPISODE_FUTURE_HORIZON {
+                eprintln!(
+                    "[crystal] WARN: --causal-horizon {} exceeds the {}-token future recorded per \
+                     episode; it will behave as {}. Re-ingest with a larger recorded horizon to use more.",
+                    causal_horizon, EPISODE_FUTURE_HORIZON, EPISODE_FUTURE_HORIZON,
+                );
+            }
             let causal_cfg = causal.then(|| clob::crystal::causal::CausalConfig {
                 horizon: causal_horizon,
                 ..Default::default()

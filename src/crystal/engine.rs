@@ -213,3 +213,70 @@ impl CrystallizationEngine {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crystal::causal::CausalConfig;
+    use crate::memory::episode::Episode;
+
+    /// Store `n` episodes at hidden state `h` whose future path is `future`.
+    fn plant(memory: &EpisodicMemory, base_ts: u64, n: u64, h: &[f32], future: Vec<u32>) {
+        for k in 0..n {
+            let ep = Episode::new(
+                base_ts + k,
+                vec![],
+                h.to_vec(),
+                1.0,
+                vec![(future[0] + 1, 0.3)], // P(actual)=0 → prediction_error 1.0
+                future[0],
+                future.clone(),
+            );
+            memory.store(&ep).expect("store episode");
+        }
+    }
+
+    /// The headline contribution, exercised through the real cycle() rather
+    /// than refine() in isolation: episodes that share one region of hidden
+    /// space but carry five distinct deterministic futures blend into an
+    /// incoherent state-only cluster (entropy log2 5 > 2 bits) and crystallize
+    /// nothing; the causal refinement splits them along future fault lines and
+    /// produces modules — and marks their episodes consumed.
+    #[test]
+    fn cycle_causal_crystallizes_where_state_only_cannot() {
+        let dir = std::env::temp_dir().join("clob_engine_causal_cycle_test");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Fresh memory. 50 episodes in a tight region with 5 futures, plus
+        // 30 scattered decoys so the batch variance is wide (MDL baseline).
+        let memory = EpisodicMemory::open(&dir, 10_000).expect("open memory");
+        for g in 0..5u64 {
+            let tok = 10 + g as u32 * 10;
+            plant(&memory, g * 100, 10, &[1.0, 0.0, 0.0, 0.0], vec![tok, tok + 1]);
+        }
+        for k in 0..30u64 {
+            let sign = if k % 2 == 0 { 1.0 } else { -1.0 };
+            plant(&memory, 1000 + k, 1, &[sign * 9.0, sign * -11.0, sign * 8.0, sign * 13.0], vec![99]);
+        }
+
+        let cfg = || CrystalConfig { min_episodes: 10, n_clusters: 2, ..CrystalConfig::default() };
+
+        // State-only: the blended cluster fails the coherence gate → 0 modules.
+        let mut state_engine = CrystallizationEngine::new(4, cfg());
+        assert_eq!(state_engine.cycle(&memory, None, 0), 0,
+            "state-only clustering should crystallize nothing from the blend");
+        assert_eq!(memory.stats().consumed, 0, "nothing consumed when nothing crystallized");
+
+        // Causal: split along the five futures → modules, and their episodes
+        // are marked consumed (the Forget step actually fires).
+        let mut causal_engine = CrystallizationEngine::new(4, CrystalConfig {
+            causal: Some(CausalConfig::default()),
+            ..cfg()
+        });
+        let n = causal_engine.cycle(&memory, None, 0);
+        assert!(n > 0, "causal refinement should crystallize at least one module, got {}", n);
+        assert!(memory.stats().consumed > 0, "crystallized episodes must be marked consumed");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -20,11 +20,14 @@
 //! 1. **Split** — inside each cluster, group episodes by their observed
 //!    future prefix. If two or more groups can stand alone, the cluster
 //!    splits along its predictive fault lines.
-//! 2. **Merge** — across clusters, compare next-token distributions with
-//!    Jensen–Shannon divergence and merge clusters that are predictively
-//!    indistinguishable. Merging by futures alone is the causal-state
-//!    definition; the MDL gate downstream still vetoes any merge whose
-//!    hidden states are too scattered to compress.
+//! 2. **Merge** — across clusters, compare the distribution over future
+//!    *prefixes* (the same horizon the split keys on) with Jensen–Shannon
+//!    divergence and merge clusters that are predictively indistinguishable.
+//!    Keying merge on the same horizon as split is what makes them inverse
+//!    operations: a multi-token split can never be silently undone by a
+//!    one-step merge. This is an h-truncated form of the causal-state merge;
+//!    the MDL gate downstream still vetoes any merge whose hidden states are
+//!    too scattered to compress.
 //!
 //! The refinement is deterministic: same episodes in, same partition out.
 
@@ -124,9 +127,12 @@ fn split_by_future(cluster: Cluster, episodes: &[Episode], cfg: &CausalConfig) -
 /// below threshold and recomputes; terminates when no pair qualifies.
 fn merge_by_future(mut clusters: Vec<Cluster>, episodes: &[Episode], cfg: &CausalConfig) -> Vec<Cluster> {
     loop {
-        let dists: Vec<HashMap<u32, f32>> = clusters
+        // Distribution over full future prefixes at the SAME horizon the
+        // split used — so merge is the exact inverse of split and cannot
+        // recombine sub-clusters whose futures diverge past token 0.
+        let dists: Vec<HashMap<Vec<u32>, f32>> = clusters
             .iter()
-            .map(|c| next_token_distribution(c, episodes))
+            .map(|c| future_distribution(c, episodes, cfg.horizon))
             .collect();
 
         let mut best: Option<(usize, usize, f32)> = None;
@@ -180,11 +186,17 @@ fn build_cluster(episode_indices: Vec<usize>, episodes: &[Episode]) -> Cluster {
     }
 }
 
-/// Empirical next-token distribution of a cluster.
-fn next_token_distribution(cluster: &Cluster, episodes: &[Episode]) -> HashMap<u32, f32> {
-    let mut counts: HashMap<u32, f32> = HashMap::new();
+/// Empirical distribution over future prefixes of a cluster, truncated to
+/// `horizon`. This is the merge key; matching the split's horizon is what
+/// keeps merge from undoing a multi-token split.
+fn future_distribution(
+    cluster: &Cluster,
+    episodes: &[Episode],
+    horizon: usize,
+) -> HashMap<Vec<u32>, f32> {
+    let mut counts: HashMap<Vec<u32>, f32> = HashMap::new();
     for &i in &cluster.episode_indices {
-        *counts.entry(episodes[i].actual_token).or_insert(0.0) += 1.0;
+        *counts.entry(episodes[i].future_prefix(horizon)).or_insert(0.0) += 1.0;
     }
     let n = cluster.episode_indices.len().max(1) as f32;
     for v in counts.values_mut() {
@@ -195,9 +207,13 @@ fn next_token_distribution(cluster: &Cluster, episodes: &[Episode]) -> HashMap<u
 
 /// Jensen–Shannon divergence between two discrete distributions, in bits.
 /// Symmetric, bounded in [0, 1]: 0 for identical distributions, 1 for
-/// distributions with disjoint support.
-pub fn jensen_shannon_bits(p: &HashMap<u32, f32>, q: &HashMap<u32, f32>) -> f32 {
-    let mut keys: Vec<u32> = p.keys().chain(q.keys()).copied().collect();
+/// distributions with disjoint support. Generic over the symbol type so it
+/// serves both single-token and future-prefix distributions.
+pub fn jensen_shannon_bits<K>(p: &HashMap<K, f32>, q: &HashMap<K, f32>) -> f32
+where
+    K: std::hash::Hash + Eq + Ord + Clone,
+{
+    let mut keys: Vec<K> = p.keys().chain(q.keys()).cloned().collect();
     keys.sort_unstable();
     keys.dedup();
 
@@ -302,6 +318,35 @@ mod tests {
         assert_eq!(refined[0].episode_indices.len(), 20);
         // Merged centroid sits between the two groups.
         assert!(refined[0].centroid[0].abs() < 1e-6);
+    }
+
+    #[test]
+    fn merge_respects_split_horizon() {
+        // The regression guard for the split/merge inverse property. Two
+        // groups share their first token (10) but diverge at token 2
+        // ([10,11] vs [10,22]). A one-step merge key would see identical
+        // next-token distributions {10:1.0} and collapse them — undoing a
+        // split that the horizon-4 key made for exactly the right reason.
+        // With a horizon-aware merge they stay apart.
+        let mut episodes = Vec::new();
+        for i in 0..10u64 {
+            episodes.push(ep(i, vec![1.0, 0.0], vec![10, 11]));
+        }
+        for i in 10..20u64 {
+            episodes.push(ep(i, vec![1.0, 0.0], vec![10, 22]));
+        }
+        let a = build_cluster((0..10).collect(), &episodes);
+        let b = build_cluster((10..20).collect(), &episodes);
+
+        // Sanity: the one-step distributions ARE identical, so the old
+        // next-token merge key would have collapsed these.
+        let one_step_a: HashMap<Vec<u32>, f32> = future_distribution(&a, &episodes, 1);
+        let one_step_b: HashMap<Vec<u32>, f32> = future_distribution(&b, &episodes, 1);
+        assert!(jensen_shannon_bits(&one_step_a, &one_step_b) < 1e-6);
+
+        // With the default horizon (4) they must not merge.
+        let refined = refine(vec![a, b], &episodes, &CausalConfig::default());
+        assert_eq!(refined.len(), 2, "divergent tails must survive merge");
     }
 
     #[test]
