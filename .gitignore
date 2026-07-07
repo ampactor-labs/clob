@@ -5,3 +5,10 @@
 /modules/
 /experiments/*/episodes/
 /experiments/*/*.bin
+# Experiment run byproducts (regenerable). The experiment definition —
+# run.sh, notes.md, manifest.toml, curated result artifacts — stays tracked;
+# soak/smoke output dirs, logs, and pid files do not.
+/experiments/*_smoke_*/
+/experiments/*/*.log
+/experiments/*/pid
+/experiments/*/mods_*/
