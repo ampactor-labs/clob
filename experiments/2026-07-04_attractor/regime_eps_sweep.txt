@@ -1,0 +1,7 @@
+# Regime eps-stability sweep (random small core, seed 42, --tokens 2000 --warmup 256 --seed 1)
+eps=1e-3  lambda1 = -1.4880 nats/token (contractive), halves -1.5094 / -1.4667
+horizon ≈ 0.7 tokens
+eps=1e-4  lambda1 = -1.2269 nats/token (contractive), halves -1.0578 / -1.3960
+horizon ≈ 0.8 tokens
+eps=1e-5  lambda1 = -1.5464 nats/token (contractive), halves -1.5884 / -1.5044
+horizon ≈ 0.6 tokens

@@ -1,0 +1,24 @@
+kernel_version = "0.1.0"
+git_commit = "65f8f20c9ab0"
+seed = 1
+subcommand = "regime"
+args = [
+    "regime",
+    "--model",
+    "seed.clob",
+    "--corpus",
+    "/home/suds/Projects/clob/tests/data/eval_corpus.txt",
+    "--tokens",
+    "2000",
+    "--warmup",
+    "256",
+    "--seed",
+    "1",
+    "--out",
+    "regime.toml",
+]
+utc_unix_seconds = 1783397818
+
+[input_hashes]
+corpus = "e9c18bacb0968efd0d5ca0421bb969de5a2e061e14a43b429ce0989bebfbad06"
+model = "ad549663c0fc4378cc630b8789e9df5207110d9afe8ea58f7cc13aee79bfee37"

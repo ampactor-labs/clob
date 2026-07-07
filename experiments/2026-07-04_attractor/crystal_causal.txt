@@ -1,0 +1,17 @@
+[crystal] Found 25 clusters (8 by state, causal-refined)
+[crystal] Distilled pattern: 14 episodes, avg_error=1.0000, mdl_ratio=0.8368
+[crystal] Crystallized module #0: sparsity=26.6%, weight_bytes=4608
+[crystal] Distilled pattern: 14 episodes, avg_error=1.0000, mdl_ratio=0.8368
+[crystal] Crystallized module #1: sparsity=30.5%, weight_bytes=4608
+[crystal] Distilled pattern: 20 episodes, avg_error=1.0000, mdl_ratio=0.8619
+[crystal] Crystallized module #2: sparsity=29.7%, weight_bytes=4608
+[crystal] Distilled pattern: 20 episodes, avg_error=1.0000, mdl_ratio=0.8222
+[crystal] Crystallized module #3: sparsity=27.3%, weight_bytes=4608
+[crystal] Distilled pattern: 20 episodes, avg_error=1.0000, mdl_ratio=0.8157
+[crystal] Crystallized module #4: sparsity=25.0%, weight_bytes=4608
+[crystal] Distilled pattern: 20 episodes, avg_error=1.0000, mdl_ratio=0.8523
+[crystal] Crystallized module #5: sparsity=32.0%, weight_bytes=4608
+[crystal] Distilled pattern: 13 episodes, avg_error=0.9966, mdl_ratio=0.8478
+[crystal] Crystallized module #6: sparsity=27.3%, weight_bytes=4608
+[crystal] Marked 121 episodes as consumed
+[crystal] 7 new modules saved to "mods_causal" (next_id was 0)

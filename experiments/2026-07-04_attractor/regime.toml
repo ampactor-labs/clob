@@ -1,0 +1,10 @@
+lambda1_nats_per_token = -1.2268782628965615
+lambda1_first_half = -1.0578030891735606
+lambda1_second_half = -1.3959534366195632
+memory_horizon_tokens = 0.8150767930626466
+regime = "contractive"
+state_dim = 640
+n_steps = 2000
+warmup_tokens = 256
+eps = 0.00009999999747378752
+seed = 1

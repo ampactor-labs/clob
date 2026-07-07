@@ -35,8 +35,10 @@ time axis, invisible to any treatment of the stream as a bag of draws.
 
 For a source that is a deterministic dynamical system observed through
 some readout, the entropy rate has a name and a shape: the
-Kolmogorov–Sinai entropy, equal to the sum of the system's positive
-Lyapunov exponents. Usually small. Sometimes zero. Everything above it —
+Kolmogorov–Sinai entropy, which under an SRB measure equals the sum of
+the system's positive Lyapunov exponents (Pesin; in general Ruelle's
+inequality makes it an upper bound, and reading it off an observable
+needs a generating partition). Usually small. Sometimes zero. Everything above it —
 often almost everything — is not randomness in the source but ignorance
 of its state. Takens' embedding theorem sharpens this to something almost
 indecent: a delay history of a *single* scalar observable reconstructs
@@ -80,23 +82,25 @@ structure it existed to find, because it partitioned by geometry and
 merely graded by consequence.
 
 `src/crystal/causal.rs` inverts that. After k-means, clusters are split
-along their future fault lines and merged when their next-token
-distributions are indistinguishable (Jensen–Shannon divergence under a
-threshold). Merging on futures alone is the causal-state definition; the
-MDL gate downstream still vetoes any merge whose hidden states are too
-scattered to compress. Theory proposes, MDL disposes.
+along their future fault lines and merged when their distributions over
+future *prefixes* — the same horizon the split keys on — are
+indistinguishable (Jensen–Shannon divergence under a threshold). Keying
+merge and split on the same horizon makes them inverse operations, an
+h-truncated form of the causal-state merge; the MDL gate downstream still
+vetoes any merge whose hidden states are too scattered to compress.
+Theory proposes, MDL disposes.
 
 The first run of `clob crystal --causal` on the planted-pattern
-diagnostic corpus, frozen random small core, is on the record: the
-state-only partition produced 8 clusters and 0 modules, as it had in
-every run this project ever made; the causal refinement took the same
-318 episodes to 20 clusters and crystallized 4 modules — the first
-modules ever produced by real pipeline flow — and the equal-compute A/B
-moved held-out NLL from 7.0494 to 7.0304. That −0.27% is a whisper, far
-under Bet 2's 2% pass line, measured on a core that cannot represent
-context anyway. It is reported here because it is the loop's first
-non-zero signal, not because it validates anything. Bet 6 below says
-where validation actually happens.
+diagnostic corpus, frozen random small core, is on the record
+(`experiments/2026-07-04_attractor/`): the state-only partition produced
+8 clusters and 0 modules, as it had in every run this project ever made;
+the causal refinement took the same 318 episodes to 25 clusters and
+crystallized 7 modules — the first modules ever produced by real pipeline
+flow — and the equal-compute A/B moved held-out NLL from 7.0494 to
+7.0273. That −0.31% is a whisper, far under Bet 2's 2% pass line,
+measured on a core that cannot represent context anyway. It is reported
+here because it is the loop's first non-zero signal, not because it
+validates anything. Bet 6 below says where validation actually happens.
 
 ## Part III: The regime is a resource
 
@@ -119,9 +123,12 @@ against maps with known exponents before being pointed at the model.
 Its first measurement closes the project's open wound. The reservoir
 probe of 2026-06-22 found zero contextual gain over a unigram null and
 recorded `RESERVOIR DEAD` without knowing why. The instrument answers:
-the random small core measures **λ₁ = −1.23 nats/token** (stable across
-ε from 1e-3 to 1e-5 and across seeds), a state-memory horizon of **0.8
-tokens**. The frozen core erases the past faster than one token arrives.
+the random small core is **deeply contractive** — λ₁ = −1.23 nats/token
+at the default probe scale (ε = 1e-4), a state-memory horizon of **0.8
+tokens**. Across ε ∈ {1e-3, 1e-4, 1e-5} the *sign and regime* are stable
+(λ₁ ∈ [−1.55, −1.23], horizon 0.6–0.8 tokens every time); the magnitude
+swings ~26% and is not to be read as a precise constant. The frozen core
+erases the past faster than one token arrives.
 No linear readout could ever have recovered context, because by the time
 the readout looked, the context was gone. The probe's verdict was
 correct; now it is explained, and the explanation is a number with a
@@ -161,7 +168,7 @@ Bet 8 is a design commitment for the `clob train` command itself.
 | Bet | Metric | Pass | Kill |
 |:--|:--|:--|:--|
 | 6 — causal partition earns its keep | held-out NLL at equal compute, modules from `--causal` distill vs state-only distill, trained core, diagnostic then real corpus | ≥ 1% lower NLL, and ≥ as many MDL-passing modules | not lower than state-only |
-| 7 — regime tracks capability | Spearman ρ between λ₁ and held-out NLL across ≥ 5 Path B checkpoints spanning training | ρ ≥ 0.6 (NLL falls as λ₁ rises from deep contraction), best checkpoint in −0.5 < λ₁ ≤ 0.05 | \|ρ\| < 0.2, or best checkpoint remains at λ₁ < −1 |
+| 7 — regime tracks capability | Spearman ρ between λ₁ and capability (= −held-out NLL) across ≥ 5 Path B checkpoints spanning training | ρ ≥ 0.6 (capability rises as λ₁ rises from deep contraction), best checkpoint in −0.5 < λ₁ ≤ 0.05 | \|ρ\| < 0.2, or best checkpoint remains at λ₁ < −1 |
 | 8 — the objective should buy the future, not the next token | held-out NLL at horizons 2–8 for a core trained with horizon-weighted loss vs next-token-only, equal compute | ≥ 2% lower at horizons 2–8, ≤ 0.5% worse at horizon 1 | > 1% worse at horizon 1, or no multi-horizon gain |
 
 Bet 7 carries the sharpest risk and the most information. If a
@@ -188,7 +195,10 @@ division was information theory all along: erasing a bit costs kT·ln 2,
 and erasure is the only logically irreversible — hence unavoidably
 dissipative — operation in the loop. Look at the eight steps. Experience,
 notice, buffer, distill, crystallize, compile, integrate: all, in
-principle, reversible bookkeeping. **Forget** is the step physics taxes.
+principle, reversible bookkeeping — they retain their inputs (the
+episodes sit in the ring buffer until released), so no bit is physically
+erased. **Forget** is the step that erases retained state, and so the one
+physics taxes.
 The architecture's load-bearing step and thermodynamics' billable step
 are the same step, which is either a coincidence or the design being
 more right than it knew. The forgetting bill is the compression bill;
@@ -224,19 +234,24 @@ Shipped with this document, verified on this machine:
 ```text
 src/dynamics/{mod,lyapunov}.rs   twin-trajectory λ₁ estimator; verified
                                  on maps with known exponents
-clob regime                      λ₁(random small core) = −1.23 nats/token;
+clob regime                      λ₁(random small core) = −1.23 nats/token
+                                 at ε=1e-4 (contractive across ε 1e-3..1e-5);
                                  memory horizon 0.8 tokens; the reservoir
                                  postmortem, explained
 src/crystal/causal.rs            causal-state split/merge refinement
+                                 (merge honors the split horizon)
 clob crystal --causal            same 318 episodes: state-only 0 modules,
-                                 causal 4 modules (first ever from real
-                                 pipeline flow); A/B NLL 7.0494 → 7.0304
+                                 causal 7 modules (first ever from real
+                                 pipeline flow); A/B NLL 7.0494 → 7.0273
 src/crystal/synth.rs             signed-partial-permutation gate; the
                                  first real module exposed a ~10¹²-op
                                  latent search bug, fixed the same day
 CoreModel::{export,import}_state the state-space API — Lyapunov twins
                                  today, BPTT window detachment (Path B
                                  Phase 3) tomorrow
+experiments/2026-07-04_attractor the artifacts behind every number above:
+                                 regime.toml + manifest, eps sweep, crystal
+                                 state-vs-causal output, A/B eval JSONs
 ```
 
 *Written on the same T490, for the same T490. The kernel now knows what
