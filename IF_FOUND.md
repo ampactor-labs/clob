@@ -17,7 +17,7 @@ the raw experience. Every improvement is meant to cost *less* energy, not more.
 The design thesis is in `ARCHITECTURE.md`; the roadmap and resume state in
 `PLAN.md`; the verified ground truth in the project's memory file.
 
-It is, at time of writing, ~11k lines of Rust, 70 passing tests, byte-for-byte
+It is, at time of writing, ~11k lines of Rust, 110 passing tests, byte-for-byte
 reproducible from a single seed. The plumbing composes end to end. That part is
 real and was built carefully.
 

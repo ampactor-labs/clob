@@ -20,10 +20,10 @@ See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 
 ## State (updated 2026-07-04 — the attractor track landed)
 
-**Branch:** `main`, 22+ commits ahead of `origin/main` (not pushed).
+**Branch:** `main`, 26 commits ahead of `origin/main` (not pushed).
 
 **Commit history (most recent first):**
-- (2026-07-04) — ATTRACTOR.md: second thesis (compress the past, not the
+- `65f8f20` — ATTRACTOR.md: second thesis (compress the past, not the
   stream) + Bets 6–8 pre-registered + doc cross-refs
 - `fb697a8` — Crystallize by predictive equivalence: causal-state refinement
 - `6670b2f` — Make symbolic synthesis tractable at model scale
@@ -51,7 +51,8 @@ See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 - `abaa160` — Phase A: metrics subsystem + J/nat dashboard
 - `827c890` — (pre-supercharge) Sharpened ARCHITECTURE.md + fixed distill MDL math
 
-**Test suite:** 70+ tests are expected to pass (`cargo test --release`). Includes unit
+**Test suite:** 100+ tests are expected to pass (`cargo test --release`; 110 at
+the attractor-track commit). Includes unit
 tests for distill/MDL, router policy gradient, meta-critic target-network
 refresh, symbolic-synth planted-pattern recovery, active selection
 acquisition score, metrics window serialization, byte-identical model
@@ -75,19 +76,23 @@ exist but all judged after one does:
 
 - **Regime instrument** — `clob regime` measures the core's largest Lyapunov
   exponent by twin trajectories (`src/dynamics/`). First measurement: the
-  random small core sits at λ₁ = −1.23 nats/token, a state-memory horizon of
-  0.8 tokens — the reservoir probe's null result, explained mechanically.
-  During Path B training, run it per checkpoint; Bet 7 pre-registers what
-  the trajectory of λ₁ must look like for the edge-of-chaos story to hold.
-  The state export/import API underneath it (`CoreModel::{export,import}_state`)
-  is the same API Path B Phase 3 needs for BPTT window detachment.
+  random small core is deeply contractive, λ₁ = −1.23 nats/token at ε=1e-4
+  (stably contractive, λ₁ ∈ [−1.55, −1.23] across ε 1e-3..1e-5), a
+  state-memory horizon of 0.6–0.8 tokens — the reservoir probe's null result,
+  explained mechanically. During Path B training, run it per checkpoint; Bet 7
+  pre-registers what the trajectory of λ₁ must look like for the edge-of-chaos
+  story to hold. The state export/import API underneath it
+  (`CoreModel::{export,import}_state`) is the same API Path B Phase 3 needs for
+  BPTT window detachment.
 - **Causal-state distill** — `clob crystal --causal` splits clusters along
-  future fault lines and merges predictively identical ones
-  (`src/crystal/causal.rs`). On the diagnostic corpus it took the same 318
-  episodes from 0 crystallized modules (state-only, as in every prior run)
-  to 4 — the loop's first modules from real pipeline flow — with an
-  equal-compute A/B whisper of −0.27% NLL. Judged for real by Bet 6 at Path
-  B Phases 5–6, causal arm vs state-only arm.
+  future fault lines and merges predictively identical ones — merge keyed on
+  the same future-prefix horizon as the split, so it can't undo a multi-token
+  split (`src/crystal/causal.rs`). On the diagnostic corpus it took the same
+  318 episodes from 0 crystallized modules (state-only, as in every prior run)
+  to 7 (25 clusters, 121 episodes consumed) — the loop's first modules from
+  real pipeline flow — with an equal-compute A/B whisper of −0.31% NLL
+  (7.0494→7.0273). Artifacts in `experiments/2026-07-04_attractor/`. Judged
+  for real by Bet 6 at Path B Phases 5–6, causal arm vs state-only arm.
 - **Predictive objective** — Episodes now record an 8-token `future`; the
   `clob train` command (Path B Phase 4) gets a horizon-weighted loss option,
   pre-registered as Bet 8, so the trainer buys the future rather than only
@@ -135,7 +140,7 @@ In rough order:
 # 1. Smoke-build
 cargo build --release
 
-# 2. Smoke-test (must show all tests passed; 70+ expected)
+# 2. Smoke-test (must show all tests passed; 100+ expected)
 cargo test --release 2>&1 | grep "test result"
 
 # 3. End-to-end pipeline (takes ~1 min)

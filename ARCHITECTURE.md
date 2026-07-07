@@ -775,7 +775,7 @@ would have saved it.
 
 ---
 
-## Current status (2026-04-20, Phase I)
+## Current status (updated 2026-07-04)
 
 This section is maintained as Part V's bets accumulate evidence. Each bet's
 status is either "untested" (infrastructure not in place), "instrumented"
