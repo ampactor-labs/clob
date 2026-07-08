@@ -18,7 +18,38 @@ compiled ternary modules and discards the raw episodes once compressed.
 See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 "unsurpassable" rhetoric of earlier drafts).
 
-## State (updated 2026-07-04 — the attractor track landed)
+## State (updated 2026-07-08 — Path B Phase 5 passed)
+
+**Current live state.** Branch `main` remains unpushed and is now ahead of
+`origin/main` by the Path B / Bet 7 work plus the Phase 5 experiment receipts.
+`cargo test --release` passes 118 tests. Treat the older commit list below as
+historical orientation, not a current HEAD list.
+
+The core now learns in the **dense latent** Path B training path. Phases 0–4
+landed the checked full-model backward and `clob train`; Phase 5 then passed on
+the planted diagnostic corpus:
+
+- `experiments/2026-07-08_phase5_planted_patterns/` pre-registers the run and
+  records the result.
+- Small dense latent core, byte-level tokens, `seed=1`, `window=32`, `lr=5e-3`,
+  `8000` steps.
+- Whole-corpus latent NLL: `0.279761` vs byte unigram `3.152967` and
+  Laplace-smoothed byte bigram `3.212050` (`8.9%` of unigram).
+- Structured Sections 1, 2, 3, and 5 all beat both baselines; registered
+  verdict: **PASS**.
+- Effective ternary projection still failed (`5.686825` whole-corpus NLL),
+  so this does not validate deployable ternary weights or Bet 1.
+
+Bet 7's first real test is also on record in `experiments/2026-07-08_bet7/`:
+the literal registered verdict is INDETERMINATE, but the positive
+lambda1/capability tracking hypothesis is falsified. Do not rewrite that result
+into confirmation.
+
+**Next gate.** Phase 6: train on the real corpus with controls, then judge
+crystallization separately on a trained substrate. Keep QAT as the path toward
+closing the ternary projection gap.
+
+## Historical state (updated 2026-07-04 — the attractor track landed)
 
 **Branch:** `main`, 26 commits ahead of `origin/main` (not pushed).
 
@@ -170,11 +201,12 @@ Phases G–L/N closed the original blockers: the model-save path, top-level
 seed threading (no `thread_rng` in production paths), config manifests,
 checkpoint/resume, bench-suite, token caches, split checks, and first-run
 script all exist now. Still open:
-- The core does not learn. `src/learn` has pieces, but there is no supervised
-  backward pass, no untied readout, and no `train` command. **→ Path B.**
+- The dense latent core learns on planted structure. The effective ternary
+  projection does **not** preserve that learning, so QAT or a better ternary
+  training path remains open before Bet 1 can be judged.
 - The first real run crystallized zero modules because the frozen random core
-  did not expose useful structure. Crystallization should wait for a trained
-  core before being judged again.
+  did not expose useful structure. Crystallization should now be re-tested only
+  after Phase 6 trains a real-corpus core with controls.
 - Scalar x86 emitter (`addss`/`subss` per trit); AVX2 is aspiration,
   not measurement. **→ Phase O.**
 - `eprintln!` everywhere (171 calls, 158 in `main.rs`); no leveled
@@ -183,8 +215,9 @@ script all exist now. Still open:
   implemented but unwired — not on the inference hot path. **→ Phase Q.**
 - MoE routers stay dense f32 after REINFORCE training; not
   re-ternarized into the same compression regime as experts. **→ Phase R.**
-- All five falsifiable bets remain untested/instrumented — there is no
-  real-data signal yet. **Unblocked by Phase L.**
+- Bets 1–6 still need their real control runs. Bet 7 has a real signal:
+  literal verdict INDETERMINATE under the original thresholds, but the
+  positive-tracking hypothesis is falsified by the 2026-07-08 sweep.
 
 ## Global conventions
 

@@ -50,8 +50,15 @@ Missing:
   separate gradients. The deployed inference model still ties them; wiring the
   untied readout into the persisted model is Phase 4.
 - ~~A supervised `train` subcommand with manifests and checkpoints.~~ **Done**
-  — `clob train` (`src/learn/train.rs`), smoke-gated. **← Phase 5 (planted
-  patterns) is next.**
+  — `clob train` (`src/learn/train.rs`), smoke-gated.
+- ~~Phase 5 planted-pattern run.~~ **Done** —
+  `experiments/2026-07-08_phase5_planted_patterns/` pre-registers and reports
+  the diagnostic. The small dense latent core reached whole-corpus NLL
+  `0.279761` versus byte unigram `3.152967` and Laplace bigram `3.212050`;
+  all four structured sections beat both baselines. The verdict is **PASS**.
+  The effective ternary projection still failed (`5.686825` whole-corpus NLL),
+  so this validates latent core training only, not deployable ternary weights.
+  **← Phase 6 (real corpus and controls) is next.**
 
 ## Locked Direction
 
@@ -163,8 +170,10 @@ Honest finding from the re-ternarization cadence: on `tests/data/eval_corpus.txt
 sits near baseline (gap ~+1.5–1.8 nats). Pure latent training does not yield
 deployable ternary weights; forward-through-ternary STE quantization-aware
 training is the refinement that closes that gap, and the gap is exactly the
-quantization cost Bet 1 will measure. Phase 5 trains on the planted-pattern
-diagnostic corpus (known answers) before crystallization is judged again.
+quantization cost Bet 1 will measure. Phase 5 has now passed on the
+planted-pattern diagnostic corpus (known answers) before crystallization is
+judged again. The pass is for the dense latent core; the effective ternary
+projection still loses the learned capability.
 
 The trained core is now measurable by the dynamics instrument: `clob regime
 --dense <artifact>` runs the Lyapunov twin on a trained dense core (via a
@@ -172,15 +181,28 @@ stateful `DenseModel::decode_step` + state snapshot). First result
 (`experiments/2026-07-08_regime_climb/`): a mini core climbs λ₁ = −0.40 →
 −0.16 → −0.11 (memory horizon 2.5 → 8.9 tokens) as its NLL falls 3.02 → 0.73 —
 capability and regime moving together, a first data point for `ATTRACTOR.md`
-Bet 7. This is the instrument the full Bet 7 checkpoint trajectory needs.
+Bet 7. The full Bet 7 checkpoint trajectory then corrected that preview:
+`experiments/2026-07-08_bet7/` found a strong negative trained-checkpoint
+relation (ρ = −0.81), so the positive-tracking hypothesis is falsified even
+though the literal pre-registered verdict is INDETERMINATE.
 
-## Phase 5: Planted-Pattern Run
+## Phase 5: Planted-Pattern Run — **Done**
 
 Train a small dense core on `data/synthetic/diagnostic.txt`.
 
 Pass: deterministic sections fall to very low NLL and beat the unigram/bigram
 baseline. Kill: the trained core cannot beat those baselines on planted
 structure.
+
+Shipped in `experiments/2026-07-08_phase5_planted_patterns/`: the registered
+small dense latent run passes. Whole-corpus latent NLL fell to `0.279761`
+against byte unigram `3.152967` and Laplace-smoothed byte bigram `3.212050`
+(`8.9%` of unigram). Structured Sections 1, 2, 3, and 5 all beat both
+baselines, with Section 1 at `0.281143`, Section 2 at `0.704469`, Section 3 at
+`0.704122`, and Section 5 at `0.691557`. This proves the Phase 4 trainer can
+fit the planted diagnostic structure. It does not judge crystallization, and
+it does not solve the ternary deployment gap: the same artifact's effective
+ternary projection measured `5.686825` NLL on the whole corpus.
 
 Only after this passes should crystallization be evaluated again.
 
@@ -196,7 +218,9 @@ modules-loaded must reduce held-out NLL versus modules-cleared.
 ## Trust Chain
 
 Gradient checker -> per-layer checks -> SSM BPTT check -> tiny full-model check
--> trivial-corpus loss drop -> planted-pattern run -> real-corpus f32 control
--> crystallization ablation.
+-> trivial-corpus loss drop -> planted-pattern run (passed) -> real-corpus f32
+control -> crystallization ablation.
 
-No step should claim the core learns until the planted-pattern run passes.
+The dense latent core now earns the claim that it learns on planted structure.
+Do not extend that claim to deployable ternary weights or crystallization until
+the Phase 6 controls and equal-compute ablations pass.

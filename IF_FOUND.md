@@ -17,13 +17,32 @@ the raw experience. Every improvement is meant to cost *less* energy, not more.
 The design thesis is in `ARCHITECTURE.md`; the roadmap and resume state in
 `PLAN.md`; the verified ground truth in the project's memory file.
 
-It is, at time of writing, ~11k lines of Rust, 110 passing tests, byte-for-byte
+It is, at time of writing, ~11k lines of Rust, 118 passing tests, byte-for-byte
 reproducible from a single seed. The plumbing composes end to end. That part is
 real and was built carefully.
 
+## Current update (2026-07-08)
+
+The warning below was the right warning when written, but Path B has now moved.
+The core **does learn** in the dense latent training path: the full-model
+backward is finite-difference checked, `clob train` exists, and the Phase 5
+planted-pattern run passed (`experiments/2026-07-08_phase5_planted_patterns/`).
+A small dense latent core drove the diagnostic corpus to NLL `0.279761` versus
+byte unigram `3.152967`, with all four structured sections beating both byte
+unigram and Laplace-smoothed byte bigram baselines.
+
+Do not over-read that. The deployable ternary projection still loses the
+learning (`5.686825` whole-corpus NLL on the same artifact), crystallization
+has not yet been re-judged on a trained core, and Bet 7's first real test
+falsified the positive lambda1/capability tracking hypothesis. Read `PLAN.md`,
+`docs/plans/path-b-core-training-build.md`, and
+`experiments/2026-07-08_bet7/` for the current state.
+
 ## What clob is NOT — read this part twice
 
-**clob does not yet learn.** This is the truth that matters most:
+**Historical warning, superseded in part by the 2026-07-08 update above.**
+At the time this section was written, **clob did not yet learn.** The warning
+still matters as a record of what had not been proven then:
 
 - The ternary core — embeddings, the recurrent SSM, every block — **is never
   trained.** It stands at random initialization, permanently.
@@ -62,9 +81,10 @@ readout over frozen-core hidden states and measured zero contextual gain over a
 trained bias-only unigram null. Treat that as a failed Path A probe unless a
 stronger replicated run contradicts it.
 
-So the next build is **Path B**. Untie the readout, implement a checked backward
-pass, train the core on planted patterns, and only then ask crystallization to
-compress what the core has learned.
+That made the next build **Path B**. The readout was untied in the training
+path, the checked backward pass was implemented, and the planted-pattern dense
+latent run now passes. Crystallization still waits to be judged on a trained
+substrate.
 
 Since that fork was written, the probe's verdict acquired a mechanism. The
 dynamics instrument (`clob regime`, 2026-07-04) measures the random core at
@@ -86,14 +106,14 @@ it deserves to be.
 
 ## How to resume it
 
-1. Read `ARCHITECTURE.md`, `PLAN.md`, and the memory file — the orientation
-   triad.
-2. `cargo test --release` — should be green.
-3. `scripts/diagnostic_run.sh` — runs the planted-pattern corpus, whose answers
-   are *known* (`data/synthetic/expected.md`). Ground truth before real noise.
-4. `scripts/first_run.sh` — the one-command real-data run. Honest, but it tests
-   crystallization on a frozen core, not the headline bets.
-5. Make the fork. Then build core learning. Then the bets become real.
+1. Read `ARCHITECTURE.md`, `ATTRACTOR.md`, `PLAN.md`, and
+   `docs/plans/path-b-core-training-build.md`.
+2. Read the receipts in `experiments/2026-07-08_bet7/` and
+   `experiments/2026-07-08_phase5_planted_patterns/`.
+3. `cargo test --release` — should be green.
+4. Continue at Path B Phase 6: real-corpus training with controls, then
+   crystallization ablation on a trained substrate.
+5. Keep threshold changes separate from the runs they judge.
 
 ## Why it was not simply left running
 
