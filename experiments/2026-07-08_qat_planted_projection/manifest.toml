@@ -1,0 +1,51 @@
+label = "qat_planted_projection"
+date = "2026-07-08"
+kernel_version = "0.1.0"
+source_commit = "8450b26b72b491bbc520ab382fbed455a115e919"
+
+[run]
+summary = "QAT diagnostic: train forward-through-ternary on the planted corpus and judge the effective-ternary projection against the Phase 5 latent-projection gap."
+corpus = "data/synthetic/diagnostic.txt"
+tokenizer = "built-in byte-level tokenizer, vocab=260"
+config = "small"
+seed = 1
+window = 32
+lr = 0.002
+weight_decay = 0.0
+clip_norm = 1.0
+steps = 8000
+mode = "qat"
+ternarize_every = 1000
+
+[pre_registration]
+question = "Does forward-through-ternary STE-QAT close the Phase 5 deployable projection gap on planted structure?"
+not_judged = "Bet 1 real-corpus ternary-vs-f32 control, Bet 2 crystallization gain, Bet 6 causal partition gain, and Bet 7 regime tracking are not judged by this run."
+comparison = "Phase 5 pure latent training passed in latent space but its effective-ternary projection measured whole-corpus NLL 5.686825."
+
+[pre_registration.pass]
+criteria = [
+  "whole-corpus effective-ternary QAT NLL <= 0.75 * whole-corpus unigram NLL",
+  "effective-ternary QAT NLL beats both byte unigram and Laplace-smoothed byte bigram baselines on all four structured sections: 1, 2, 3, and 5",
+  "whole-corpus effective-ternary QAT NLL <= 0.5 * Phase 5 pure-latent effective-ternary NLL",
+  "effective-ternary QAT NLL <= 1.0 on Section 1 periodic phrase",
+  "effective-ternary QAT NLL <= 1.5 on Section 2 shift rule",
+  "effective-ternary QAT NLL <= 1.2 on Section 3 period-two alternation",
+]
+
+[pre_registration.kill]
+criteria = [
+  "whole-corpus effective-ternary QAT NLL >= whole-corpus unigram NLL",
+  "or effective-ternary QAT NLL beats both byte unigram and Laplace-smoothed byte bigram baselines on fewer than three of the four structured sections",
+  "or whole-corpus effective-ternary QAT NLL is not below the Phase 5 pure-latent effective-ternary NLL",
+]
+
+[pre_registration.indeterminate]
+criteria = [
+  "Any outcome between the pass and kill lines is reported as indeterminate, not retuned after the run.",
+]
+
+[baselines]
+unigram = "clob eval-dense reported byte unigram NLL for the same scope"
+bigram = "Laplace-smoothed byte bigram, alpha=1.0, trained and evaluated on the same scope as a local-pattern baseline"
+phase5_projection = "experiments/2026-07-08_phase5_planted_patterns/results.tsv final_ternary_nll"
+
