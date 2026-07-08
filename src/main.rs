@@ -461,8 +461,16 @@ enum Commands {
     /// estimation. λ₁ < 0 bounds state memory at 1/|λ₁| tokens; λ₁ ≈ 0 is
     /// the edge-of-chaos regime where context can persist.
     Regime {
+        /// A `.clob` CoreModel to measure. Provide exactly one of --model / --dense.
         #[arg(long)]
-        model: PathBuf,
+        model: Option<PathBuf>,
+        /// A `.dense` trained artifact (Path B) to measure instead of a CoreModel.
+        #[arg(long)]
+        dense: Option<PathBuf>,
+        /// Measure the effective-ternary projection of a --dense core rather
+        /// than its f32 latents (previews the deployment regime).
+        #[arg(long)]
+        ternary: bool,
         /// Drive corpus (text, or a pre-encoded `.tokens` cache). Wraps if
         /// shorter than warmup + tokens.
         #[arg(long)]
@@ -655,8 +663,8 @@ fn main() {
                 steps, ternarize_every, log_every, checkpoint_every, &checkpoint_dir, &output,
             );
         }
-        Commands::Regime { model, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
-            cmd_regime(&model, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
+        Commands::Regime { model, dense, ternary, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
+            cmd_regime(&model, &dense, ternary, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
         }
         Commands::Compile { memory_dir: _, modules_dir } => {
             cmd_compile(&modules_dir);
@@ -2423,33 +2431,22 @@ fn cmd_train(
 /// dynamics. Loads the model twice (twin trajectories need independent
 /// recurrent state), drives both through the corpus in lockstep, perturbs
 /// one by `eps`, and averages the per-step log stretch.
-#[allow(clippy::too_many_arguments)]
-fn cmd_regime(
-    model_path: &PathBuf, corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>,
-    n_tokens: usize, warmup: usize, eps: f32, seed: u64, out: &Option<PathBuf>,
+/// Estimate + print + optionally persist a regime report from any twin system.
+fn finish_regime<S: clob::dynamics::lyapunov::TwinSystem>(
+    mut twin: S, warmup: usize, n_tokens: usize, eps: f32, seed: u64,
+    out: &Option<PathBuf>, manifest: clob::config::manifest::RunManifest,
 ) {
-    use clob::dynamics::lyapunov::{self, TwinSystem};
-    use clob::dynamics::{ModelTwin, RegimeReport};
+    use clob::dynamics::lyapunov;
+    use clob::dynamics::RegimeReport;
     use clob::util::seed::SeedTree;
 
-    let tokenizer = load_tokenizer(tokenizer_path);
-    let model_a = io::loader::load_model(model_path).expect("failed to load model");
-    let model_b = io::loader::load_model(model_path).expect("failed to load model");
-    assert_vocab_compatible(&tokenizer, &model_a.config);
-
-    let tokens = load_or_encode_tokens(corpus_path, &tokenizer, &model_a.config);
-    if tokens.is_empty() {
-        eprintln!("[regime] empty corpus: {:?}", corpus_path);
-        std::process::exit(2);
-    }
-
-    let mut twin = ModelTwin::new(model_a, model_b, tokens);
     println!(
         "[regime] state_dim={} warmup={} steps={} eps={}",
         twin.state_dim(), warmup, n_tokens, eps,
     );
-    twin.warmup(warmup);
-
+    for _ in 0..warmup {
+        twin.step();
+    }
     let mut rng = SeedTree::new(seed).child("regime-perturbation");
     let cfg = lyapunov::LyapunovConfig { eps, n_steps: n_tokens };
     let est = lyapunov::estimate(&mut twin, &cfg, &mut rng);
@@ -2472,14 +2469,81 @@ fn cmd_regime(
     if let Some(out_path) = out {
         let toml_str = toml::to_string_pretty(&report).expect("serialize regime report");
         std::fs::write(out_path, toml_str).expect("write regime report");
-        let manifest = clob::config::manifest::RunManifest::new("regime")
-            .with_seed(seed)
-            .with_input("model", model_path)
-            .with_input("corpus", corpus_path);
         if let Err(e) = manifest.save_sidecar(out_path) {
             eprintln!("[regime] manifest write failed: {}", e);
         }
         println!("[regime] report written to {:?}", out_path);
+    }
+}
+
+/// Load a drive corpus as token ids, checking they fit `vocab`.
+fn load_regime_tokens(corpus_path: &PathBuf, tokenizer: &BpeTokenizer, vocab: usize) -> Vec<u32> {
+    let tokens: Vec<u32> = if corpus_path.extension().and_then(|e| e.to_str()) == Some("tokens") {
+        clob::token::tokens_file::load_tokens(corpus_path)
+            .expect("failed to read .tokens").tokens
+    } else {
+        let text = std::fs::read_to_string(corpus_path).expect("failed to read corpus");
+        tokenizer.encode(&text)
+    };
+    if tokens.is_empty() {
+        eprintln!("[regime] empty corpus: {:?}", corpus_path);
+        std::process::exit(2);
+    }
+    if let Some(&m) = tokens.iter().max() {
+        if m as usize >= vocab {
+            eprintln!("[regime] token id {} >= vocab {}", m, vocab);
+            std::process::exit(2);
+        }
+    }
+    tokens
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_regime(
+    model_path: &Option<PathBuf>, dense_path: &Option<PathBuf>, ternary: bool,
+    corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>,
+    n_tokens: usize, warmup: usize, eps: f32, seed: u64, out: &Option<PathBuf>,
+) {
+    use clob::dynamics::{DenseModelTwin, ModelTwin};
+    use clob::learn::backprop::{ternarize_matrix_families, DenseModel};
+    use clob::learn::train::TrainedDense;
+
+    let tokenizer = load_tokenizer(tokenizer_path);
+    let manifest = |kind: &str, path: &PathBuf| {
+        clob::config::manifest::RunManifest::new("regime")
+            .with_seed(seed)
+            .with_input(kind, path)
+            .with_input("corpus", corpus_path)
+    };
+
+    match (model_path, dense_path) {
+        (Some(m), None) => {
+            let model_a = io::loader::load_model(m).expect("failed to load model");
+            let model_b = io::loader::load_model(m).expect("failed to load model");
+            assert_vocab_compatible(&tokenizer, &model_a.config);
+            let tokens = load_regime_tokens(corpus_path, &tokenizer, model_a.config.vocab_size);
+            let twin = ModelTwin::new(model_a, model_b, tokens);
+            finish_regime(twin, warmup, n_tokens, eps, seed, out, manifest("model", m));
+        }
+        (None, Some(dp)) => {
+            let bytes = std::fs::read(dp).expect("failed to read .dense artifact");
+            let art = TrainedDense::from_bytes(&bytes).expect("failed to parse .dense artifact");
+            let params = if ternary {
+                println!("[regime] measuring the effective-ternary projection (deployment regime)");
+                ternarize_matrix_families(art.dims, &art.latents)
+            } else {
+                art.latents.clone()
+            };
+            let tokens = load_regime_tokens(corpus_path, &tokenizer, art.dims.vocab);
+            let a = DenseModel::from_flat(art.dims, &params);
+            let b = DenseModel::from_flat(art.dims, &params);
+            let twin = DenseModelTwin::new(a, b, tokens);
+            finish_regime(twin, warmup, n_tokens, eps, seed, out, manifest("dense", dp));
+        }
+        _ => {
+            eprintln!("[regime] provide exactly one of --model or --dense");
+            std::process::exit(2);
+        }
     }
 }
 

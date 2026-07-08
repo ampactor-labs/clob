@@ -240,12 +240,20 @@ struct LayerParams {
 }
 
 /// The dense trainable model, reconstructed from a flat parameter vector.
+///
+/// Carries per-layer recurrent state (SSM + MLGRU) so it can be stepped one
+/// token at a time like the deployed core — `forward_window` ignores this
+/// state (it threads local state for BPTT), but `decode_step` and the
+/// state-snapshot API use it so the dynamics instrument can measure a trained
+/// dense core's regime directly.
 pub struct DenseModel {
     dims: DenseDims,
     embed: Vec<f32>,
     layers: Vec<LayerParams>,
     final_norm_w: Vec<f32>,
     readout: Vec<f32>,
+    ssm_state: Vec<Vec<f32>>,
+    gru_state: Vec<Vec<f32>>,
 }
 
 impl DenseModel {
@@ -290,7 +298,112 @@ impl DenseModel {
         let final_norm_w = take(d).to_vec();
         let readout = take(dims.vocab * d).to_vec();
         assert_eq!(c, flat.len());
-        Self { dims, embed, layers, final_norm_w, readout }
+        let ssm_state = vec![vec![0.0; dims.state_len()]; dims.n_layers];
+        let gru_state = vec![vec![0.0; d]; dims.n_layers];
+        Self { dims, embed, layers, final_norm_w, readout, ssm_state, gru_state }
+    }
+
+    /// Zero all recurrent state.
+    pub fn reset_state(&mut self) {
+        for s in &mut self.ssm_state {
+            s.fill(0.0);
+        }
+        for s in &mut self.gru_state {
+            s.fill(0.0);
+        }
+    }
+
+    /// Total recurrent-state dimension: per layer, SSM state plus MLGRU state.
+    pub fn state_dim(&self) -> usize {
+        self.dims.n_layers * (self.dims.state_len() + self.dims.d_model)
+    }
+
+    /// Snapshot the full recurrent state, block-major (per layer: SSM then
+    /// MLGRU). The read half of the state API the regime twin needs.
+    pub fn export_state(&self) -> Vec<f32> {
+        let mut out = Vec::with_capacity(self.state_dim());
+        for l in 0..self.dims.n_layers {
+            out.extend_from_slice(&self.ssm_state[l]);
+            out.extend_from_slice(&self.gru_state[l]);
+        }
+        out
+    }
+
+    /// Restore recurrent state from an `export_state` snapshot.
+    pub fn import_state(&mut self, state: &[f32]) {
+        assert_eq!(state.len(), self.state_dim(), "dense state len mismatch");
+        let sl = self.dims.state_len();
+        let d = self.dims.d_model;
+        let mut c = 0;
+        for l in 0..self.dims.n_layers {
+            self.ssm_state[l].copy_from_slice(&state[c..c + sl]);
+            c += sl;
+            self.gru_state[l].copy_from_slice(&state[c..c + d]);
+            c += d;
+        }
+    }
+
+    /// Step one token, carrying and updating the recurrent state. Returns the
+    /// logits. This is `forward_window`'s per-token forward without the tape.
+    pub fn decode_step(&mut self, token: u32) -> Vec<f32> {
+        let d = self.dims.d_model;
+        let ssm_dims = self.dims.ssm();
+        let mut x = self.embed[token as usize * d..(token as usize + 1) * d].to_vec();
+
+        for l in 0..self.dims.n_layers {
+            let lp = &self.layers[l];
+
+            let mut n1 = vec![0.0f32; d];
+            rmsnorm_forward(&x, &lp.norm1_w, RMS_EPS, &mut n1);
+            let mut ssm_cache = SsmStepCache::new(ssm_dims);
+            let mut ssm_out = vec![0.0f32; d];
+            ssm_forward_latent(
+                ssm_dims, &lp.in_proj, &lp.x_proj, &lp.out_proj,
+                &lp.a_log, &lp.d_param, &lp.dt_bias,
+                &n1, &self.ssm_state[l], &mut ssm_cache, &mut ssm_out,
+            );
+            self.ssm_state[l].copy_from_slice(&ssm_cache.next_state);
+            for i in 0..d {
+                x[i] += ssm_out[i];
+            }
+
+            let mut n2 = vec![0.0f32; d];
+            rmsnorm_forward(&x, &lp.norm2_w, RMS_EPS, &mut n2);
+            let mut f_pre = vec![0.0f32; d];
+            let mut f_gate = vec![0.0f32; d];
+            let mut c_pre = vec![0.0f32; d];
+            let mut c_value = vec![0.0f32; d];
+            let mut o_pre = vec![0.0f32; d];
+            let mut o_gate = vec![0.0f32; d];
+            let mut next_state = vec![0.0f32; d];
+            let mut gru_out = vec![0.0f32; d];
+            mlgru_forward_latent(
+                &lp.w_f, &lp.b_f, &lp.w_c, &lp.b_c, &lp.w_o, &lp.b_o,
+                &n2, &self.gru_state[l],
+                &mut f_pre, &mut f_gate, &mut c_pre, &mut c_value,
+                &mut o_pre, &mut o_gate, &mut next_state, &mut gru_out,
+            );
+            self.gru_state[l].copy_from_slice(&next_state);
+
+            let mut gate_pre = vec![0.0f32; self.dims.d_inner];
+            let mut gate = vec![0.0f32; self.dims.d_inner];
+            let mut up = vec![0.0f32; self.dims.d_inner];
+            let mut fused = vec![0.0f32; self.dims.d_inner];
+            let mut mixer_out = vec![0.0f32; d];
+            glu_forward_latent(
+                &lp.w_gate, &lp.w_up, &lp.w_down, &gru_out,
+                &mut gate_pre, &mut gate, &mut up, &mut fused, &mut mixer_out,
+            );
+            for i in 0..d {
+                x[i] += mixer_out[i];
+            }
+        }
+
+        let mut fn_out = vec![0.0f32; d];
+        rmsnorm_forward(&x, &self.final_norm_w, RMS_EPS, &mut fn_out);
+        let mut logits = vec![0.0f32; self.dims.vocab];
+        unembed_forward(&self.readout, self.dims.vocab, d, &fn_out, &mut logits);
+        logits
     }
 }
 
@@ -680,6 +793,57 @@ mod tests {
         tolerance: 1.5e-2,
         denom_floor: 5e-3,
     };
+
+    #[test]
+    fn decode_step_matches_forward_window_logits() {
+        // decode_step (stateful, tape-free) and forward_window (BPTT tape) must
+        // compute the same logits token-for-token from a zero-state start —
+        // otherwise the regime instrument would measure different dynamics than
+        // the trainer optimized.
+        let dims = tiny_dims();
+        let flat = init_params(dims.total_len());
+        let tokens = vec![1u32, 3, 0, 2, 1];
+        let targets = vec![0usize; tokens.len()];
+
+        // forward_window computes per-step logits internally; reconstruct them
+        // by asking a stepping model for each token.
+        let model = DenseModel::from_flat(dims, &flat);
+        let (_, tape) = model.forward_window(&tokens, &targets);
+
+        let mut stepper = DenseModel::from_flat(dims, &flat);
+        stepper.reset_state();
+        for (t, tok) in tokens.iter().enumerate() {
+            let logits = stepper.decode_step(*tok);
+            for (a, b) in logits.iter().zip(tape_logits(&tape, t).iter()) {
+                assert!((a - b).abs() < 1e-6, "logit mismatch at step {}: {} vs {}", t, a, b);
+            }
+        }
+    }
+
+    // Accessor for a timestep's logits from the (private) tape.
+    fn tape_logits(tape: &Tape, t: usize) -> Vec<f32> {
+        tape.steps[t].logits.clone()
+    }
+
+    #[test]
+    fn dense_state_snapshot_roundtrips() {
+        let dims = tiny_dims();
+        let flat = init_params(dims.total_len());
+        let drive: Vec<u32> = (0..30u32).map(|i| (i * 5 + 1) % dims.vocab as u32).collect();
+
+        let mut model = DenseModel::from_flat(dims, &flat);
+        model.reset_state();
+        for &t in &drive[..15] {
+            let _ = model.decode_step(t);
+        }
+        let snap = model.export_state();
+        assert_eq!(snap.len(), model.state_dim());
+
+        let first: Vec<Vec<f32>> = drive[15..].iter().map(|&t| model.decode_step(t)).collect();
+        model.import_state(&snap);
+        let second: Vec<Vec<f32>> = drive[15..].iter().map(|&t| model.decode_step(t)).collect();
+        assert_eq!(first, second, "replay from imported dense state must be identical");
+    }
 
     #[test]
     fn dense_dims_layer_len_matches_pack() {

@@ -80,6 +80,61 @@ impl TwinSystem for ModelTwin {
     }
 }
 
+/// Twin trained-dense-core trajectories, driven by the same token stream.
+///
+/// The regime counterpart of [`ModelTwin`] for a `DenseModel` (Path B). Both
+/// copies must carry identical parameters; measuring the *latent* dense core
+/// is the point — that is where a trained core's learning lives, so this is
+/// what shows whether λ₁ moved as the core learned.
+pub struct DenseModelTwin {
+    a: crate::learn::backprop::DenseModel,
+    b: crate::learn::backprop::DenseModel,
+    tokens: Vec<u32>,
+    pos: usize,
+}
+
+impl DenseModelTwin {
+    /// Build a twin pair from two models with identical parameters. Panics on
+    /// an empty token stream.
+    pub fn new(
+        mut a: crate::learn::backprop::DenseModel,
+        mut b: crate::learn::backprop::DenseModel,
+        tokens: Vec<u32>,
+    ) -> Self {
+        assert!(!tokens.is_empty(), "DenseModelTwin needs a non-empty token stream");
+        a.reset_state();
+        b.reset_state();
+        Self { a, b, tokens, pos: 0 }
+    }
+
+    pub fn warmup(&mut self, n: usize) {
+        for _ in 0..n {
+            self.step();
+        }
+    }
+}
+
+impl TwinSystem for DenseModelTwin {
+    fn state_dim(&self) -> usize {
+        self.a.state_dim()
+    }
+    fn step(&mut self) {
+        let token = self.tokens[self.pos];
+        self.pos = (self.pos + 1) % self.tokens.len();
+        let _ = self.a.decode_step(token);
+        let _ = self.b.decode_step(token);
+    }
+    fn state_a(&self) -> Vec<f32> {
+        self.a.export_state()
+    }
+    fn state_b(&self) -> Vec<f32> {
+        self.b.export_state()
+    }
+    fn set_state_b(&mut self, state: &[f32]) {
+        self.b.import_state(state);
+    }
+}
+
 /// Half-width of the near-critical band, nats/token. Descriptive binning
 /// for reports — the pre-registered Bet 7 thresholds live in ATTRACTOR.md
 /// and are about correlation across checkpoints, not these bins.
