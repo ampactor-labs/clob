@@ -446,6 +446,10 @@ enum Commands {
         /// Re-ternarize and report the deployment gap every N steps (0 = off).
         #[arg(long, default_value_t = 0)]
         ternarize_every: usize,
+        /// Train with forward-through-ternary STE-QAT instead of the smooth
+        /// latent surrogate. Leave off to reproduce prior latent runs.
+        #[arg(long)]
+        qat: bool,
         #[arg(long, default_value_t = 200)]
         log_every: usize,
         #[arg(long, default_value_t = 0)]
@@ -676,11 +680,11 @@ fn main() {
         }
         Commands::Train {
             corpus, tokenizer, config, seed, window, lr, weight_decay, clip_norm,
-            steps, ternarize_every, log_every, checkpoint_every, checkpoint_dir, output,
+            steps, ternarize_every, qat, log_every, checkpoint_every, checkpoint_dir, output,
         } => {
             cmd_train(
                 &corpus, &tokenizer, &config, seed, window, lr, weight_decay, clip_norm,
-                steps, ternarize_every, log_every, checkpoint_every, &checkpoint_dir, &output,
+                steps, ternarize_every, qat, log_every, checkpoint_every, &checkpoint_dir, &output,
             );
         }
         Commands::EvalDense { dense, corpus, tokenizer, window, max_tokens, ternary } => {
@@ -2361,11 +2365,11 @@ fn cmd_eval_dense(
 fn cmd_train(
     corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>, config: &str, seed: u64,
     window: usize, lr: f32, weight_decay: f32, clip_norm: f32, steps: usize,
-    ternarize_every: usize, log_every: usize, checkpoint_every: usize,
+    ternarize_every: usize, qat: bool, log_every: usize, checkpoint_every: usize,
     checkpoint_dir: &Option<PathBuf>, output: &PathBuf,
 ) {
     use clob::learn::backprop::DenseDims;
-    use clob::learn::train::{train_dense, TrainConfig, TrainedDense};
+    use clob::learn::train::{train_dense, TrainConfig, TrainMode, TrainedDense};
 
     let tokenizer = load_tokenizer(tokenizer_path);
     let vocab = tokenizer.vocab_size();
@@ -2406,11 +2410,13 @@ fn cmd_train(
         std::process::exit(2);
     }
 
+    let mode = if qat { TrainMode::Qat } else { TrainMode::Latent };
     let cfg = TrainConfig {
-        window, lr, weight_decay, clip_norm, steps, ternarize_every, log_every, checkpoint_every,
+        window, lr, weight_decay, clip_norm, steps, ternarize_every, log_every, checkpoint_every, mode,
     };
     println!(
-        "[train] config={} d_model={} n_layers={} vocab={} | {} tokens, window={}, steps={}, lr={}",
+        "[train] mode={} config={} d_model={} n_layers={} vocab={} | {} tokens, window={}, steps={}, lr={}",
+        if qat { "qat" } else { "latent" },
         config, dims.d_model, dims.n_layers, vocab, tokens.len(), window, steps, lr,
     );
 

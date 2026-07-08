@@ -14,6 +14,16 @@
 
 use crate::learn::backprop::{init_dense_params, ternarize_matrix_families, DenseDims, DenseModel};
 
+/// Which weights the training forward/backward pass uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrainMode {
+    /// Train and differentiate the smooth f32 latent surrogate.
+    Latent,
+    /// Forward/backward through the effective ternary projection, then apply
+    /// those straight-through gradients to the underlying latents.
+    Qat,
+}
+
 /// Training hyperparameters.
 #[derive(Debug, Clone, Copy)]
 pub struct TrainConfig {
@@ -33,6 +43,8 @@ pub struct TrainConfig {
     pub log_every: usize,
     /// Fire the checkpoint callback every N steps (0 = never).
     pub checkpoint_every: usize,
+    /// Training forward mode.
+    pub mode: TrainMode,
 }
 
 impl Default for TrainConfig {
@@ -46,6 +58,7 @@ impl Default for TrainConfig {
             ternarize_every: 0,
             log_every: 100,
             checkpoint_every: 0,
+            mode: TrainMode::Latent,
         }
     }
 }
@@ -110,7 +123,11 @@ impl FlatAdamW {
     fn step(&mut self, params: &mut [f32], grad: &[f64]) -> f32 {
         self.t += 1;
         let norm = (grad.iter().map(|g| g * g).sum::<f64>().sqrt()) as f32;
-        let scale = if norm > self.clip && norm > 0.0 { self.clip / norm } else { 1.0 };
+        let scale = if norm > self.clip && norm > 0.0 {
+            self.clip / norm
+        } else {
+            1.0
+        };
         let bc1 = 1.0 - self.beta1.powi(self.t);
         let bc2 = 1.0 - self.beta2.powi(self.t);
         for i in 0..params.len() {
@@ -138,7 +155,11 @@ pub fn eval_nll(
     max_tokens: usize,
 ) -> f32 {
     let mut model = DenseModel::from_flat(dims, params);
-    let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    let limit = if max_tokens == 0 {
+        tokens.len()
+    } else {
+        tokens.len().min(max_tokens)
+    };
     let mut total = 0.0f64;
     let mut n = 0usize;
     let mut i = 0usize;
@@ -161,7 +182,11 @@ pub fn eval_nll(
             i += 1;
         }
     }
-    if n == 0 { 0.0 } else { (total / n as f64) as f32 }
+    if n == 0 {
+        0.0
+    } else {
+        (total / n as f64) as f32
+    }
 }
 
 /// Token-marginal (unigram) NLL, in nats — the baseline a trained core must
@@ -213,7 +238,10 @@ pub fn train_dense(
     mut on_log: impl FnMut(&TrainReport),
     mut on_checkpoint: impl FnMut(usize, DenseDims, &[f32]),
 ) -> TrainResult {
-    assert!(tokens.len() > cfg.window, "corpus shorter than one BPTT window");
+    assert!(
+        tokens.len() > cfg.window,
+        "corpus shorter than one BPTT window"
+    );
     let n_windows = (tokens.len() - 1) / cfg.window;
     assert!(n_windows > 0, "need at least one full window");
 
@@ -230,11 +258,18 @@ pub fn train_dense(
         let w = step % n_windows;
         let start = w * cfg.window;
         let inputs = &tokens[start..start + cfg.window];
-        for (dst, &t) in targets_buf.iter_mut().zip(tokens[start + 1..start + 1 + cfg.window].iter()) {
+        for (dst, &t) in targets_buf
+            .iter_mut()
+            .zip(tokens[start + 1..start + 1 + cfg.window].iter())
+        {
             *dst = t as usize;
         }
 
-        let model = DenseModel::from_flat(dims, &params);
+        let train_params = match cfg.mode {
+            TrainMode::Latent => params.clone(),
+            TrainMode::Qat => ternarize_matrix_families(dims, &params),
+        };
+        let model = DenseModel::from_flat(dims, &train_params);
         let (loss, tape) = model.forward_window(inputs, &targets_buf);
         let per_token = (loss / cfg.window as f64) as f32;
 
@@ -261,7 +296,12 @@ pub fn train_dense(
             || do_tern
             || step + 1 == cfg.steps
         {
-            let report = TrainReport { step: step + 1, train_nll: per_token, ternary_nll, grad_norm };
+            let report = TrainReport {
+                step: step + 1,
+                train_nll: per_token,
+                ternary_nll,
+                grad_norm,
+            };
             on_log(&report);
             history.push(report);
         }
@@ -316,6 +356,7 @@ mod tests {
             ternarize_every: 0,
             log_every: 0,
             checkpoint_every: 0,
+            mode: TrainMode::Latent,
         };
         let res = train_dense(dims, &tokens, &cfg, 1, |_| {}, |_, _, _| {});
 
@@ -329,7 +370,8 @@ mod tests {
         assert!(
             res.final_train_nll < 0.5 * res.unigram_nll,
             "final NLL {:.4} not well below unigram {:.4}",
-            res.final_train_nll, res.unigram_nll,
+            res.final_train_nll,
+            res.unigram_nll,
         );
         // Stronger: below the memoryless floor (~0.347) proves the recurrence
         // actually trained, not just the value→next readout.
@@ -346,5 +388,39 @@ mod tests {
         let tokens: Vec<u32> = (0..4).cycle().take(400).map(|x| x as u32).collect();
         let h = unigram_nll(&tokens, 4);
         assert!((h - (4.0f32).ln()).abs() < 1e-4, "got {}", h);
+    }
+
+    #[test]
+    fn qat_training_reduces_ternary_loss_on_memory_pattern() {
+        let pattern = [0u32, 1, 0, 2];
+        let mut tokens = Vec::new();
+        for _ in 0..50 {
+            tokens.extend_from_slice(&pattern);
+        }
+        let dims = DenseDims::mini(3);
+        let cfg = TrainConfig {
+            window: 8,
+            lr: 2e-3,
+            weight_decay: 0.0,
+            clip_norm: 1.0,
+            steps: 800,
+            ternarize_every: 0,
+            log_every: 0,
+            checkpoint_every: 0,
+            mode: TrainMode::Qat,
+        };
+        let init = init_dense_params(dims, 3);
+        let init_ternary = ternarize_matrix_families(dims, &init);
+        let init_nll = eval_nll(dims, &init_ternary, &tokens, cfg.window, 0);
+
+        let res = train_dense(dims, &tokens, &cfg, 3, |_| {}, |_, _, _| {});
+        let final_nll = eval_nll(dims, &res.ternary_effective, &tokens, cfg.window, 0);
+
+        assert!(
+            final_nll < 0.8 * init_nll,
+            "QAT ternary NLL did not fall enough: init {:.4}, final {:.4}",
+            init_nll,
+            final_nll,
+        );
     }
 }
