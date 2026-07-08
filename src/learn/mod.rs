@@ -6,3 +6,4 @@ pub mod grad;
 pub mod optimizer;
 pub mod replay;
 pub mod ssm;
+pub mod train;

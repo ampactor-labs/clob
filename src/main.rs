@@ -416,6 +416,46 @@ enum Commands {
         #[arg(long, default_value_t = 4)]
         causal_horizon: usize,
     },
+    /// Train a dense ternary core by truncated BPTT (Path B). Streams a corpus
+    /// into windows, backprops through the gradient-checked full-model backward,
+    /// clips the global gradient norm, and steps the f32 latents with AdamW.
+    /// Writes a trained-dense artifact (latents + effective ternary weights).
+    Train {
+        /// Training corpus (text, or a pre-encoded `.tokens` cache).
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Dense config preset: `mini` (d=16, L=2) or `small` (d=64, L=3).
+        #[arg(long, default_value = "small")]
+        config: String,
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// BPTT window length (tokens per step; state detached at boundaries).
+        #[arg(long, default_value_t = 16)]
+        window: usize,
+        #[arg(long, default_value_t = 1e-3)]
+        lr: f32,
+        #[arg(long, default_value_t = 0.01)]
+        weight_decay: f32,
+        #[arg(long, default_value_t = 1.0)]
+        clip_norm: f32,
+        /// Optimizer steps (windows; cycles the corpus).
+        #[arg(long, default_value_t = 5000)]
+        steps: usize,
+        /// Re-ternarize and report the deployment gap every N steps (0 = off).
+        #[arg(long, default_value_t = 0)]
+        ternarize_every: usize,
+        #[arg(long, default_value_t = 200)]
+        log_every: usize,
+        #[arg(long, default_value_t = 0)]
+        checkpoint_every: usize,
+        #[arg(long)]
+        checkpoint_dir: Option<PathBuf>,
+        /// Output path for the trained-dense artifact.
+        #[arg(long, default_value = "trained.dense")]
+        output: PathBuf,
+    },
     /// Measure the core's dynamical regime: largest Lyapunov exponent λ₁
     /// of the token-driven state dynamics, by twin-trajectory (Benettin)
     /// estimation. λ₁ < 0 bounds state memory at 1/|λ₁| tokens; λ₁ ≈ 0 is
@@ -605,6 +645,15 @@ fn main() {
                     std::process::exit(2);
                 }
             }
+        }
+        Commands::Train {
+            corpus, tokenizer, config, seed, window, lr, weight_decay, clip_norm,
+            steps, ternarize_every, log_every, checkpoint_every, checkpoint_dir, output,
+        } => {
+            cmd_train(
+                &corpus, &tokenizer, &config, seed, window, lr, weight_decay, clip_norm,
+                steps, ternarize_every, log_every, checkpoint_every, &checkpoint_dir, &output,
+            );
         }
         Commands::Regime { model, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
             cmd_regime(&model, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
@@ -2247,6 +2296,127 @@ fn next_module_id(dir: &Path) -> u64 {
         }
     }
     max_id.map(|m| m + 1).unwrap_or(0)
+}
+
+/// Train a dense ternary core by truncated BPTT.
+#[allow(clippy::too_many_arguments)]
+fn cmd_train(
+    corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>, config: &str, seed: u64,
+    window: usize, lr: f32, weight_decay: f32, clip_norm: f32, steps: usize,
+    ternarize_every: usize, log_every: usize, checkpoint_every: usize,
+    checkpoint_dir: &Option<PathBuf>, output: &PathBuf,
+) {
+    use clob::learn::backprop::DenseDims;
+    use clob::learn::train::{train_dense, TrainConfig, TrainedDense};
+
+    let tokenizer = load_tokenizer(tokenizer_path);
+    let vocab = tokenizer.vocab_size();
+
+    // Load tokens: pre-encoded `.tokens` cache or on-the-fly text encoding.
+    let tokens: Vec<u32> = if corpus_path.extension().and_then(|e| e.to_str()) == Some("tokens") {
+        let tf = clob::token::tokens_file::load_tokens(corpus_path).expect("failed to read .tokens");
+        if tf.vocab_size as usize > vocab {
+            eprintln!(
+                "[train] .tokens vocab {} exceeds tokenizer vocab {}; re-encode to match",
+                tf.vocab_size, vocab,
+            );
+            std::process::exit(2);
+        }
+        tf.tokens
+    } else {
+        let text = std::fs::read_to_string(corpus_path).expect("failed to read corpus");
+        tokenizer.encode(&text)
+    };
+
+    if let Some(&max_id) = tokens.iter().max() {
+        if max_id as usize >= vocab {
+            eprintln!("[train] token id {} >= vocab {}", max_id, vocab);
+            std::process::exit(2);
+        }
+    }
+
+    let dims = match config {
+        "mini" => DenseDims::mini(vocab),
+        "small" => DenseDims::small(vocab),
+        other => {
+            eprintln!("[train] unknown config '{}'; use 'mini' or 'small'", other);
+            std::process::exit(2);
+        }
+    };
+    if tokens.len() <= window {
+        eprintln!("[train] corpus ({} tokens) shorter than one window ({})", tokens.len(), window);
+        std::process::exit(2);
+    }
+
+    let cfg = TrainConfig {
+        window, lr, weight_decay, clip_norm, steps, ternarize_every, log_every, checkpoint_every,
+    };
+    println!(
+        "[train] config={} d_model={} n_layers={} vocab={} | {} tokens, window={}, steps={}, lr={}",
+        config, dims.d_model, dims.n_layers, vocab, tokens.len(), window, steps, lr,
+    );
+
+    let ckpt_base = checkpoint_dir.clone().unwrap_or_else(|| PathBuf::from("train_checkpoints"));
+    let on_checkpoint = |step: usize, dims: DenseDims, latents: &[f32]| {
+        let dir = ckpt_base.join(format!("checkpoint_{:08}", step));
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            eprintln!("[train] checkpoint mkdir failed: {}", e);
+            return;
+        }
+        let art = TrainedDense {
+            dims,
+            latents: latents.to_vec(),
+            ternary_effective: clob::learn::backprop::ternarize_matrix_families(dims, latents),
+        };
+        let path = dir.join("trained.dense");
+        if let Err(e) = art.save(&path) {
+            eprintln!("[train] checkpoint save failed: {}", e);
+        } else {
+            println!("[train] checkpoint {:?}", path);
+        }
+    };
+
+    let result = train_dense(dims, &tokens, &cfg, seed, |r| {
+        match r.ternary_nll {
+            Some(t) => println!(
+                "[train] step {:>6}  nll {:.4}  ternary {:.4}  (gap {:+.4})  |g| {:.3}",
+                r.step, r.train_nll, t, t - r.train_nll, r.grad_norm,
+            ),
+            None => println!(
+                "[train] step {:>6}  nll {:.4}  |g| {:.3}",
+                r.step, r.train_nll, r.grad_norm,
+            ),
+        }
+    }, on_checkpoint);
+
+    let art = TrainedDense {
+        dims: result.dims,
+        latents: result.latents,
+        ternary_effective: result.ternary_effective,
+    };
+    if let Err(e) = art.save(output) {
+        eprintln!("[train] failed to write {:?}: {}", output, e);
+        std::process::exit(1);
+    }
+    let manifest = clob::config::manifest::RunManifest::new("train")
+        .with_seed(seed)
+        .with_input("corpus", corpus_path);
+    if let Err(e) = manifest.save_sidecar(output) {
+        eprintln!("[train] manifest write failed: {}", e);
+    }
+
+    let ratio = if result.unigram_nll > 0.0 {
+        result.final_train_nll / result.unigram_nll
+    } else {
+        f32::NAN
+    };
+    println!(
+        "[train] done: final NLL {:.4} vs unigram {:.4} ({:.0}% of baseline) → {:?}",
+        result.final_train_nll, result.unigram_nll, ratio * 100.0, output,
+    );
+    if result.final_train_nll >= result.unigram_nll {
+        println!("[train] WARNING: did not beat the unigram baseline — check lr/window/steps");
+    }
 }
 
 /// Measure the largest Lyapunov exponent of the model's token-driven state

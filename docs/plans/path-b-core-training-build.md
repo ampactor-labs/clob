@@ -49,7 +49,9 @@ Missing:
   keeps `embed` and `readout` as independent `[vocab × d_model]` tables with
   separate gradients. The deployed inference model still ties them; wiring the
   untied readout into the persisted model is Phase 4.
-- A supervised `train` subcommand with manifests and checkpoints. **← next.**
+- ~~A supervised `train` subcommand with manifests and checkpoints.~~ **Done**
+  — `clob train` (`src/learn/train.rs`), smoke-gated. **← Phase 5 (planted
+  patterns) is next.**
 
 ## Locked Direction
 
@@ -130,7 +132,7 @@ trainable family is non-trivially exercised so the check can't pass vacuously.
 The composition differentiates the f32 latent surrogate; the STE→ternary
 bridge stays separate per the trust chain.
 
-## Phase 4: Train Command
+## Phase 4: Train Command — **Done** (`src/learn/train.rs`, `clob train`)
 
 Add `clob train` for dense configs:
 
@@ -145,6 +147,24 @@ Add `clob train` for dense configs:
 
 Smoke gate: train on a trivial repeated-token corpus and require loss to fall
 well below the unigram baseline.
+
+Shipped: `train_dense` runs truncated-BPTT windows (state detached at each
+boundary) through the Phase 3 backward, clips the global gradient norm, and
+steps the f32 latents with a flat AdamW. `clob train` wraps it with `mini`/
+`small` dense presets, a trained-dense artifact (latents + effective ternary
+weights), a manifest sidecar, and numbered checkpoint dirs. The smoke gate
+(`trivial_structured_corpus_beats_unigram`) uses the memory-requiring pattern
+`[0,1,0,2]` and asserts the trained NLL falls below the *memoryless* floor
+(~0.35), so the recurrence — not just the readout — is proven to train.
+
+Honest finding from the re-ternarization cadence: on `tests/data/eval_corpus.txt`
+(byte-level, `mini`), the latent core reaches ~41% of the unigram baseline
+(NLL 1.25 vs 3.02), but the naive effective-ternary projection of those latents
+sits near baseline (gap ~+1.5–1.8 nats). Pure latent training does not yield
+deployable ternary weights; forward-through-ternary STE quantization-aware
+training is the refinement that closes that gap, and the gap is exactly the
+quantization cost Bet 1 will measure. Phase 5 trains on the planted-pattern
+diagnostic corpus (known answers) before crystallization is judged again.
 
 ## Phase 5: Planted-Pattern Run
 

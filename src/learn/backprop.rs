@@ -41,11 +41,14 @@ use crate::learn::grad::{
 };
 use crate::learn::ssm::{ssm_backward_latent, ssm_forward_latent, SsmDims, SsmStepCache, SsmStepGrads};
 use crate::tensor::ternary::TernaryMatrix;
+use crate::util::seed::SeedTree;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 const RMS_EPS: f32 = 1e-6;
 
 /// Shape of a dense trainable core.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DenseDims {
     pub d_model: usize,
     pub n_heads: usize,
@@ -57,6 +60,16 @@ pub struct DenseDims {
 }
 
 impl DenseDims {
+    /// A small dense preset for real training runs (d=64, L=3).
+    pub fn small(vocab: usize) -> Self {
+        Self { d_model: 64, n_heads: 4, d_head: 16, d_state: 16, d_inner: 128, n_layers: 3, vocab }
+    }
+
+    /// A minimal dense preset for fast smoke runs (d=16, L=2).
+    pub fn mini(vocab: usize) -> Self {
+        Self { d_model: 16, n_heads: 2, d_head: 8, d_state: 4, d_inner: 32, n_layers: 2, vocab }
+    }
+
     pub fn ssm(self) -> SsmDims {
         SsmDims { n_heads: self.n_heads, d_state: self.d_state, d_head: self.d_head }
     }
@@ -107,6 +120,102 @@ fn latent(rows: usize, cols: usize, weights: &[f32]) -> LatentWeights {
         cols,
         version: 0,
     }
+}
+
+/// Seeded initial parameters for a dense model, in canonical pack order and
+/// in the STE-mask-open zone. Matrices get fan-in-scaled uniform noise, norm
+/// scales start at 1, biases/dt_bias at 0, `a_log` at −0.5 (a ≈ 0.61), and
+/// `d_param` at 0.1. Same seed → same init.
+pub fn init_dense_params(dims: DenseDims, seed: u64) -> Vec<f32> {
+    let mut rng = SeedTree::new(seed).child("train-init");
+    let d = dims.d_model;
+    let mut out = Vec::with_capacity(dims.total_len());
+
+    let push_uniform = |out: &mut Vec<f32>, n: usize, fan_in: usize, rng: &mut rand::rngs::StdRng| {
+        let s = 1.0 / (fan_in as f32).sqrt();
+        for _ in 0..n {
+            out.push(rng.gen_range(-s..s));
+        }
+    };
+
+    push_uniform(&mut out, dims.vocab * d, d, &mut rng); // embed
+    for _ in 0..dims.n_layers {
+        out.extend(std::iter::repeat(1.0).take(d)); // norm1
+        push_uniform(&mut out, d * d, d, &mut rng); // in_proj
+        push_uniform(&mut out, dims.x_proj_rows() * d, d, &mut rng); // x_proj
+        push_uniform(&mut out, d * d, d, &mut rng); // out_proj
+        out.extend(std::iter::repeat(-0.5).take(dims.state_len())); // a_log
+        out.extend(std::iter::repeat(0.1).take(dims.n_heads)); // d_param
+        out.extend(std::iter::repeat(0.0).take(dims.n_heads)); // dt_bias
+        out.extend(std::iter::repeat(1.0).take(d)); // norm2
+        push_uniform(&mut out, d * d, d, &mut rng); // w_f
+        out.extend(std::iter::repeat(0.0).take(d)); // b_f
+        push_uniform(&mut out, d * d, d, &mut rng); // w_c
+        out.extend(std::iter::repeat(0.0).take(d)); // b_c
+        push_uniform(&mut out, d * d, d, &mut rng); // w_o
+        out.extend(std::iter::repeat(0.0).take(d)); // b_o
+        push_uniform(&mut out, dims.d_inner * d, d, &mut rng); // w_gate
+        push_uniform(&mut out, dims.d_inner * d, d, &mut rng); // w_up
+        push_uniform(&mut out, d * dims.d_inner, dims.d_inner, &mut rng); // w_down
+    }
+    out.extend(std::iter::repeat(1.0).take(d)); // final norm
+    push_uniform(&mut out, dims.vocab * d, d, &mut rng); // readout
+
+    debug_assert_eq!(out.len(), dims.total_len());
+    out
+}
+
+/// Project a latent parameter vector to its deployed *effective* ternary form
+/// — the ternarizable matrices (SSM/MLGRU/GLU projections) mapped to
+/// `trit · row_absmean`, everything else (embed, readout, norms, biases,
+/// `a_log`/`d_param`/`dt_bias`) passed through. Running `forward_window` on the
+/// result gives the ternary model's behavior, since the deployed matmul is
+/// exactly `trit · scale`. Used to measure the latent→ternary loss gap on the
+/// re-ternarization cadence.
+pub fn ternarize_matrix_families(dims: DenseDims, latent: &[f32]) -> Vec<f32> {
+    assert_eq!(latent.len(), dims.total_len());
+    let mut out = latent.to_vec();
+    let d = dims.d_model;
+    let mut c = 0usize;
+
+    let ternarize = |out: &mut [f32], c: &mut usize, rows: usize, cols: usize| {
+        for r in 0..rows {
+            let row = &mut out[*c + r * cols..*c + (r + 1) * cols];
+            let absmean = row.iter().map(|v| v.abs()).sum::<f32>() / cols as f32;
+            if absmean > 1e-10 {
+                for w in row.iter_mut() {
+                    let n = *w / absmean;
+                    let t = if n > 0.5 { 1.0 } else if n < -0.5 { -1.0 } else { 0.0 };
+                    *w = t * absmean;
+                }
+            } else {
+                row.fill(0.0);
+            }
+        }
+        *c += rows * cols;
+    };
+    let skip = |c: &mut usize, n: usize| *c += n;
+
+    skip(&mut c, dims.vocab * d); // embed
+    for _ in 0..dims.n_layers {
+        skip(&mut c, d); // norm1
+        ternarize(&mut out, &mut c, d, d); // in_proj
+        ternarize(&mut out, &mut c, dims.x_proj_rows(), d); // x_proj
+        ternarize(&mut out, &mut c, d, d); // out_proj
+        skip(&mut c, dims.state_len() + dims.n_heads + dims.n_heads + d); // a_log,d_param,dt_bias,norm2
+        ternarize(&mut out, &mut c, d, d); // w_f
+        skip(&mut c, d); // b_f
+        ternarize(&mut out, &mut c, d, d); // w_c
+        skip(&mut c, d); // b_c
+        ternarize(&mut out, &mut c, d, d); // w_o
+        skip(&mut c, d); // b_o
+        ternarize(&mut out, &mut c, dims.d_inner, d); // w_gate
+        ternarize(&mut out, &mut c, dims.d_inner, d); // w_up
+        ternarize(&mut out, &mut c, d, dims.d_inner); // w_down
+    }
+    skip(&mut c, d + dims.vocab * d); // final norm, readout
+    assert_eq!(c, latent.len());
+    out
 }
 
 /// One layer's working parameters.
