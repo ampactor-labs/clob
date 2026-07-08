@@ -1,0 +1,46 @@
+label = "phase5_planted_patterns"
+date = "2026-07-08"
+kernel_version = "0.1.0"
+source_commit = "59ed8e696587dedc6b4cacdfc91fe3e7bd95ab76"
+
+[run]
+summary = "Path B Phase 5: train a small dense latent core on the planted synthetic diagnostic corpus and compare against byte unigram/bigram baselines."
+corpus = "data/synthetic/diagnostic.txt"
+tokenizer = "built-in byte-level tokenizer, vocab=260"
+config = "small"
+seed = 1
+window = 32
+lr = 0.005
+weight_decay = 0.01
+clip_norm = 1.0
+steps = 8000
+ternarize_every = 2000
+
+[pre_registration]
+question = "Can the Phase 4 dense latent trainer learn the known planted structure before crystallization is judged again?"
+not_judged = "Bet 1 ternary deployability, Bet 2 crystallization gain, Bet 6 causal partition gain, and Bet 7 regime tracking are not judged by this run."
+
+[pre_registration.pass]
+criteria = [
+  "whole-corpus final latent NLL <= 0.75 * whole-corpus unigram NLL",
+  "final latent NLL beats both byte unigram and Laplace-smoothed byte bigram baselines on all four structured sections: 1, 2, 3, and 5",
+  "final latent NLL <= 1.0 on Section 1 periodic phrase",
+  "final latent NLL <= 1.5 on Section 2 shift rule",
+  "final latent NLL <= 1.2 on Section 3 period-two alternation",
+]
+
+[pre_registration.kill]
+criteria = [
+  "whole-corpus final latent NLL >= whole-corpus unigram NLL",
+  "or final latent NLL beats both byte unigram and Laplace-smoothed byte bigram baselines on fewer than three of the four structured sections",
+]
+
+[pre_registration.indeterminate]
+criteria = [
+  "Any outcome between the pass and kill lines is reported as indeterminate, not retuned after the run.",
+]
+
+[baselines]
+unigram = "clob eval-dense reported byte unigram NLL for the same scope"
+bigram = "Laplace-smoothed byte bigram, alpha=1.0, trained and evaluated on the same scope as a local-pattern baseline"
+
