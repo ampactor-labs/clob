@@ -1,0 +1,24 @@
+kernel_version = "0.1.0"
+git_commit = "40c30082883a"
+seed = 1
+subcommand = "regime"
+args = [
+    "regime",
+    "--dense",
+    "mid.dense",
+    "--corpus",
+    "/home/suds/Projects/clob/tests/data/eval_corpus.txt",
+    "--tokens",
+    "2000",
+    "--warmup",
+    "256",
+    "--seed",
+    "1",
+    "--out",
+    "/home/suds/Projects/clob/experiments/2026-07-08_regime_climb/regime_mid.toml",
+]
+utc_unix_seconds = 1783522728
+
+[input_hashes]
+corpus = "e9c18bacb0968efd0d5ca0421bb969de5a2e061e14a43b429ce0989bebfbad06"
+dense = "64fdd9863af82337db35c1b15f6f93a5b4fd71b7ff2b9193702cce44efa4f8ed"

@@ -1,6 +1,8 @@
 /target
 *.tmr
 *.clob
+*.dense
+/train_checkpoints/
 /episodes/
 /modules/
 /experiments/*/episodes/

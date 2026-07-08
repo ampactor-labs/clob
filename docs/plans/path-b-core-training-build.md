@@ -166,6 +166,14 @@ training is the refinement that closes that gap, and the gap is exactly the
 quantization cost Bet 1 will measure. Phase 5 trains on the planted-pattern
 diagnostic corpus (known answers) before crystallization is judged again.
 
+The trained core is now measurable by the dynamics instrument: `clob regime
+--dense <artifact>` runs the Lyapunov twin on a trained dense core (via a
+stateful `DenseModel::decode_step` + state snapshot). First result
+(`experiments/2026-07-08_regime_climb/`): a mini core climbs λ₁ = −0.40 →
+−0.16 → −0.11 (memory horizon 2.5 → 8.9 tokens) as its NLL falls 3.02 → 0.73 —
+capability and regime moving together, a first data point for `ATTRACTOR.md`
+Bet 7. This is the instrument the full Bet 7 checkpoint trajectory needs.
+
 ## Phase 5: Planted-Pattern Run
 
 Train a small dense core on `data/synthetic/diagnostic.txt`.

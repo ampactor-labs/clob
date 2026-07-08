@@ -179,6 +179,16 @@ wrong for this architecture, and Part III above gets rewritten by its
 own instrument. That would be a good day too. The instrument stays
 either way.
 
+**First data point (2026-07-08, `experiments/2026-07-08_regime_climb/`).**
+The instrument now runs on a trained core (`clob regime --dense`). A mini
+dense core trained on a byte corpus climbs λ₁ = −0.40 → −0.16 → −0.11
+(memory horizon 2.5 → 6.1 → 8.9 tokens) as its NLL falls 3.02 → 1.36 →
+0.73 — capability and λ₁ moving together, monotonically, exactly Bet 7's
+shape. This is a *preview*, not the test: three points on 1.5 KB with
+batch-1 SGD, not the pre-registered ≥5 checkpoints and rank correlation on
+a real corpus. It is enough to say the mechanism is real and the dial
+moves the right way; the full test is now runnable.
+
 Bet 8 fixes the training objective's shape before the trainer exists:
 next-token cross-entropy weighted across a short future window (the
 `future` field Episodes now record is the same object at the memory
@@ -249,6 +259,9 @@ src/crystal/synth.rs             signed-partial-permutation gate; the
 CoreModel::{export,import}_state the state-space API — Lyapunov twins
                                  today, BPTT window detachment (Path B
                                  Phase 3) tomorrow
+clob regime --dense              regime of a TRAINED core; λ₁ climbs
+                                 −0.40→−0.11 as NLL falls 3.02→0.73 (Bet 7
+                                 preview) — experiments/2026-07-08_regime_climb
 experiments/2026-07-04_attractor the artifacts behind every number above:
                                  regime.toml + manifest, eps sweep, crystal
                                  state-vs-causal output, A/B eval JSONs
