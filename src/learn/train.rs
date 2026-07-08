@@ -125,6 +125,45 @@ impl FlatAdamW {
     }
 }
 
+/// Mean per-token NLL of a dense core over a token stream, evaluated in the
+/// same windowed/detached regime it was trained in (state reset every
+/// `window` tokens). This is the held-out capability measure Bet 7 tracks:
+/// build the model from a checkpoint's params, run it over the *holdout*
+/// tokens, and average `-log p(next)`.
+pub fn eval_nll(
+    dims: DenseDims,
+    params: &[f32],
+    tokens: &[u32],
+    window: usize,
+    max_tokens: usize,
+) -> f32 {
+    let mut model = DenseModel::from_flat(dims, params);
+    let limit = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    let mut total = 0.0f64;
+    let mut n = 0usize;
+    let mut i = 0usize;
+    while i + 1 < limit {
+        model.reset_state();
+        for _ in 0..window {
+            if i + 1 >= limit {
+                break;
+            }
+            let logits = model.decode_step(tokens[i]);
+            // Stable softmax probability of the actual next token.
+            let max = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let mut sum = 0.0f32;
+            for &l in &logits {
+                sum += (l - max).exp();
+            }
+            let p = (logits[tokens[i + 1] as usize] - max).exp() / sum.max(1e-30);
+            total += -(p.max(1e-12) as f64).ln();
+            n += 1;
+            i += 1;
+        }
+    }
+    if n == 0 { 0.0 } else { (total / n as f64) as f32 }
+}
+
 /// Token-marginal (unigram) NLL, in nats — the baseline a trained core must
 /// beat. `-Σ p_i ln p_i` over the corpus token frequencies.
 pub fn unigram_nll(tokens: &[u32], vocab: usize) -> f32 {

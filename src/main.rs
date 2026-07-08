@@ -456,6 +456,26 @@ enum Commands {
         #[arg(long, default_value = "trained.dense")]
         output: PathBuf,
     },
+    /// Evaluate a trained dense artifact's mean per-token NLL on a corpus
+    /// (held-out capability). Windowed/detached to match training.
+    EvalDense {
+        #[arg(long)]
+        dense: PathBuf,
+        /// Corpus to evaluate on (text or `.tokens`); use the holdout split.
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Eval window (state detached each window; match the train window).
+        #[arg(long, default_value_t = 16)]
+        window: usize,
+        /// Cap on tokens evaluated (0 = all).
+        #[arg(long, default_value_t = 0)]
+        max_tokens: usize,
+        /// Evaluate the effective-ternary projection instead of the latents.
+        #[arg(long)]
+        ternary: bool,
+    },
     /// Measure the core's dynamical regime: largest Lyapunov exponent λ₁
     /// of the token-driven state dynamics, by twin-trajectory (Benettin)
     /// estimation. λ₁ < 0 bounds state memory at 1/|λ₁| tokens; λ₁ ≈ 0 is
@@ -662,6 +682,9 @@ fn main() {
                 &corpus, &tokenizer, &config, seed, window, lr, weight_decay, clip_norm,
                 steps, ternarize_every, log_every, checkpoint_every, &checkpoint_dir, &output,
             );
+        }
+        Commands::EvalDense { dense, corpus, tokenizer, window, max_tokens, ternary } => {
+            cmd_eval_dense(&dense, &corpus, &tokenizer, window, max_tokens, ternary);
         }
         Commands::Regime { model, dense, ternary, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
             cmd_regime(&model, &dense, ternary, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
@@ -2304,6 +2327,33 @@ fn next_module_id(dir: &Path) -> u64 {
         }
     }
     max_id.map(|m| m + 1).unwrap_or(0)
+}
+
+/// Evaluate a trained dense artifact's held-out NLL on a corpus.
+fn cmd_eval_dense(
+    dense_path: &PathBuf, corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>,
+    window: usize, max_tokens: usize, ternary: bool,
+) {
+    use clob::learn::backprop::ternarize_matrix_families;
+    use clob::learn::train::{eval_nll, unigram_nll, TrainedDense};
+
+    let tokenizer = load_tokenizer(tokenizer_path);
+    let bytes = std::fs::read(dense_path).expect("failed to read .dense artifact");
+    let art = TrainedDense::from_bytes(&bytes).expect("failed to parse .dense artifact");
+
+    let tokens = load_regime_tokens(corpus_path, &tokenizer, art.dims.vocab);
+    let params = if ternary {
+        ternarize_matrix_families(art.dims, &art.latents)
+    } else {
+        art.latents.clone()
+    };
+    let nll = eval_nll(art.dims, &params, &tokens, window, max_tokens);
+    let base = unigram_nll(&tokens, art.dims.vocab);
+    let n = if max_tokens == 0 { tokens.len() } else { tokens.len().min(max_tokens) };
+    println!(
+        "{{\"nll\":{:.6},\"unigram\":{:.6},\"ratio\":{:.4},\"n\":{},\"ternary\":{}}}",
+        nll, base, nll / base, n, ternary,
+    );
 }
 
 /// Train a dense ternary core by truncated BPTT.
