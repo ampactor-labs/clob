@@ -136,6 +136,12 @@ dial attached. Path B training gets that dial: watch λ₁ as the core
 trains, and expect capability to arrive as the dynamics leave the
 deep-contraction regime.
 
+That expectation has since been tested and did **not** hold — a trained
+core's capability rose as λ₁ *fell* back toward contraction (Bet 7 below,
+`experiments/2026-07-08_bet7/`). Read this "leave the deep-contraction
+regime" reading as the hypothesis that the instrument was built to check,
+and that the first real check challenged — not as an established fact.
+
 ## Part IV: Prediction is synchronization
 
 The frame that unifies the two parts above comes from control theory and
@@ -179,15 +185,35 @@ wrong for this architecture, and Part III above gets rewritten by its
 own instrument. That would be a good day too. The instrument stays
 either way.
 
-**First data point (2026-07-08, `experiments/2026-07-08_regime_climb/`).**
-The instrument now runs on a trained core (`clob regime --dense`). A mini
-dense core trained on a byte corpus climbs λ₁ = −0.40 → −0.16 → −0.11
-(memory horizon 2.5 → 6.1 → 8.9 tokens) as its NLL falls 3.02 → 1.36 →
-0.73 — capability and λ₁ moving together, monotonically, exactly Bet 7's
-shape. This is a *preview*, not the test: three points on 1.5 KB with
-batch-1 SGD, not the pre-registered ≥5 checkpoints and rank correlation on
-a real corpus. It is enough to say the mechanism is real and the dial
-moves the right way; the full test is now runnable.
+**First real test (2026-07-08, `experiments/2026-07-08_bet7/`) — the thesis
+does not hold.** A `small` core (d=64) trained on the Moby-Dick corpus, nine
+checkpoints, each measured on the held-out split for both capability
+(`clob eval-dense`) and λ₁ (`clob regime --dense`). λ₁ climbs once — random
+init to the first checkpoint (−0.35 → −0.11, horizon 2.9 → 9.0 tokens) — and
+then drifts *back* toward deep contraction as capability keeps improving. The
+best-capability checkpoint sits at λ₁ = −0.28, horizon 3.6 tokens; the best
+checkpoints have the *shortest* memory. Spearman ρ(λ₁, capability) = −0.27 over
+all points, **−0.81 over trained checkpoints**: a strong *negative* relation —
+capability rises as λ₁ falls and memory shortens. The core earns its gains by
+forgetting harder, not by nearing the edge of chaos.
+
+Against the pre-registered thresholds the literal verdict is INDETERMINATE
+(ρ never reaches +0.6 to pass; |ρ| is not below 0.2 and best λ₁ is not below −1
+to kill), but the finding is not: the positive-tracking hypothesis is
+falsified. The kill clause has a gap — a strong *negative* ρ falsifies the
+near-critical thesis as hard as no correlation does, so a corrected Bet 7
+should also kill on ρ ≤ −0.2. That threshold fix belongs in its own commit, not
+this reporting of the run. (An earlier three-point preview on a 1.5 KB byte
+corpus, `experiments/2026-07-04.../2026-07-08_regime_climb`, saw only the brief
+initial climb and read it as confirmation; the full test corrects that.)
+
+This is the branch this section's Bet 7 prose named: *selective-state
+architectures partly earn their keep by forgetting on purpose*. It appears they
+do — at least on next-token BPE prediction over prose, which is largely a local
+task. Whether the near-critical story survives on a corpus with genuine
+long-range dependencies is the open question; Part III's "capability ⇒ edge of
+chaos" reading is challenged by its own instrument and should not be trusted
+until that is settled.
 
 Bet 8 fixes the training objective's shape before the trainer exists:
 next-token cross-entropy weighted across a short future window (the
@@ -259,12 +285,16 @@ src/crystal/synth.rs             signed-partial-permutation gate; the
 CoreModel::{export,import}_state the state-space API — Lyapunov twins
                                  today, BPTT window detachment (Path B
                                  Phase 3) tomorrow
-clob regime --dense              regime of a TRAINED core; λ₁ climbs
-                                 −0.40→−0.11 as NLL falls 3.02→0.73 (Bet 7
-                                 preview) — experiments/2026-07-08_regime_climb
-experiments/2026-07-04_attractor the artifacts behind every number above:
-                                 regime.toml + manifest, eps sweep, crystal
-                                 state-vs-causal output, A/B eval JSONs
+clob regime --dense              regime of a TRAINED core (via a stateful
+clob eval-dense + clob train     DenseModel + the Phase 3/4 trainer)
+experiments/2026-07-08_bet7      the Bet 7 test: 9 Moby checkpoints,
+                                 held-out NLL vs λ₁. ρ = −0.81 (trained) —
+                                 capability rises as λ₁ FALLS. Positive-
+                                 tracking hypothesis FALSIFIED; thesis
+                                 challenged, not confirmed
+experiments/2026-07-04_attractor the attractor-track artifacts: regime.toml
+                                 + manifest, eps sweep, crystal state-vs-
+                                 causal output, A/B eval JSONs
 ```
 
 *Written on the same T490, for the same T490. The kernel now knows what
