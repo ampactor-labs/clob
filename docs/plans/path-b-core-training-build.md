@@ -58,7 +58,15 @@ Missing:
   all four structured sections beat both baselines. The verdict is **PASS**.
   The effective ternary projection still failed (`5.686825` whole-corpus NLL),
   so this validates latent core training only, not deployable ternary weights.
-  **← Phase 6 (real corpus and controls) is next.**
+- ~~Forward-through-ternary QAT diagnostic.~~ **Done** —
+  `clob train --qat` runs the forward/backward pass through the effective
+  ternary projection and applies those straight-through gradients to the
+  latents. `experiments/2026-07-08_qat_planted_projection/` passed: the
+  effective ternary projection reached whole-corpus NLL `0.093766` versus byte
+  unigram `3.152967`, Laplace bigram `3.212050`, and the Phase 5 projection
+  failure `5.686825`; all four structured sections beat both baselines. QAT
+  artifacts should be judged with `eval-dense --ternary`; their latent view is
+  not the learned object. **← Phase 6 (real corpus QAT/f32 controls) is next.**
 
 ## Locked Direction
 
@@ -172,8 +180,10 @@ deployable ternary weights; forward-through-ternary STE quantization-aware
 training is the refinement that closes that gap, and the gap is exactly the
 quantization cost Bet 1 will measure. Phase 5 has now passed on the
 planted-pattern diagnostic corpus (known answers) before crystallization is
-judged again. The pass is for the dense latent core; the effective ternary
-projection still loses the learned capability.
+judged again. Pure latent training's effective ternary projection still lost
+the learned capability, but the follow-up QAT diagnostic closed that planted
+projection gap: effective-ternary QAT NLL `0.093766` on the whole diagnostic.
+That is a planted-corpus result, not Bet 1.
 
 The trained core is now measurable by the dynamics instrument: `clob regime
 --dense <artifact>` runs the Lyapunov twin on a trained dense core (via a
@@ -208,9 +218,9 @@ Only after this passes should crystallization be evaluated again.
 
 ## Phase 6: Real Corpus And Controls
 
-Train ternary and matched f32 controls on the pinned real corpus. The first real
-Bet 1 measurement is held-out CE gap versus the f32 control and memory savings
-against the same architecture.
+Train QAT ternary and matched f32/latent controls on the pinned real corpus.
+The first real Bet 1 measurement is held-out CE gap versus the f32 control and
+memory savings against the same architecture.
 
 Then re-enable crystallization and judge Bet 2 with equal compute:
 modules-loaded must reduce held-out NLL versus modules-cleared.
@@ -221,6 +231,7 @@ Gradient checker -> per-layer checks -> SSM BPTT check -> tiny full-model check
 -> trivial-corpus loss drop -> planted-pattern run (passed) -> real-corpus f32
 control -> crystallization ablation.
 
-The dense latent core now earns the claim that it learns on planted structure.
-Do not extend that claim to deployable ternary weights or crystallization until
-the Phase 6 controls and equal-compute ablations pass.
+The dense latent core and the QAT effective-ternary path now earn the claim
+that they learn on planted structure. Do not extend that claim to real-corpus
+deployability or crystallization until the Phase 6 controls and equal-compute
+ablations pass.

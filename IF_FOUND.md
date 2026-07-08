@@ -29,14 +29,17 @@ backward is finite-difference checked, `clob train` exists, and the Phase 5
 planted-pattern run passed (`experiments/2026-07-08_phase5_planted_patterns/`).
 A small dense latent core drove the diagnostic corpus to NLL `0.279761` versus
 byte unigram `3.152967`, with all four structured sections beating both byte
-unigram and Laplace-smoothed byte bigram baselines.
+unigram and Laplace-smoothed byte bigram baselines. The first QAT diagnostic
+also passed (`experiments/2026-07-08_qat_planted_projection/`): effective
+ternary weights reached NLL `0.093766` on the same planted corpus.
 
-Do not over-read that. The deployable ternary projection still loses the
-learning (`5.686825` whole-corpus NLL on the same artifact), crystallization
-has not yet been re-judged on a trained core, and Bet 7's first real test
-falsified the positive lambda1/capability tracking hypothesis. Read `PLAN.md`,
-`docs/plans/path-b-core-training-build.md`, and
-`experiments/2026-07-08_bet7/` for the current state.
+Do not over-read that. The pure-latent deployable ternary projection lost the
+learning (`5.686825` whole-corpus NLL), and QAT has only passed on the planted
+diagnostic, not the held-out real corpus. Crystallization has not yet been
+re-judged on a trained core, and Bet 7's first real test falsified the positive
+lambda1/capability tracking hypothesis. Read `PLAN.md`,
+`docs/plans/path-b-core-training-build.md`, `experiments/2026-07-08_bet7/`,
+and `experiments/2026-07-08_qat_planted_projection/` for the current state.
 
 ## What clob is NOT — read this part twice
 

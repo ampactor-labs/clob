@@ -18,10 +18,11 @@ compiled ternary modules and discards the raw episodes once compressed.
 See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 "unsurpassable" rhetoric of earlier drafts).
 
-## State (updated 2026-07-08 — Path B Phase 5 passed)
+## State (updated 2026-07-08 — QAT closes the planted projection gap)
 
 **Current live state.** Branch `main` remains unpushed and is now ahead of
-`origin/main` by the Path B / Bet 7 work plus the Phase 5 experiment receipts.
+`origin/main` by the Path B / Bet 7 work plus the Phase 5 and QAT experiment
+receipts.
 `cargo test --release` passes 118 tests. Treat the older commit list below as
 historical orientation, not a current HEAD list.
 
@@ -37,17 +38,26 @@ the planted diagnostic corpus:
   Laplace-smoothed byte bigram `3.212050` (`8.9%` of unigram).
 - Structured Sections 1, 2, 3, and 5 all beat both baselines; registered
   verdict: **PASS**.
-- Effective ternary projection still failed (`5.686825` whole-corpus NLL),
-  so this does not validate deployable ternary weights or Bet 1.
+- Pure latent training's effective ternary projection failed (`5.686825`
+  whole-corpus NLL), so Phase 5 alone did not validate deployable ternary
+  weights or Bet 1.
+- `clob train --qat` now trains forward through the effective ternary
+  projection. `experiments/2026-07-08_qat_planted_projection/` passed the
+  planted projection gate: whole-corpus effective-ternary QAT NLL `0.093766`
+  vs unigram `3.152967`, bigram `3.212050`, and Phase 5 projection `5.686825`;
+  all four structured sections beat both baselines.
+- QAT artifacts currently have a bad latent view (`6.681042` whole-corpus NLL
+  in the diagnostic), so judge them through `eval-dense --ternary`.
 
 Bet 7's first real test is also on record in `experiments/2026-07-08_bet7/`:
 the literal registered verdict is INDETERMINATE, but the positive
 lambda1/capability tracking hypothesis is falsified. Do not rewrite that result
 into confirmation.
 
-**Next gate.** Phase 6: train on the real corpus with controls, then judge
-crystallization separately on a trained substrate. Keep QAT as the path toward
-closing the ternary projection gap.
+**Next gate.** Phase 6: run the real-corpus QAT vs matched f32/latent controls,
+then judge crystallization separately on a trained substrate. The planted QAT
+pass is not Bet 1; Bet 1 needs held-out real-corpus capability and memory
+receipts.
 
 ## Historical state (updated 2026-07-04 — the attractor track landed)
 
@@ -201,9 +211,9 @@ Phases G–L/N closed the original blockers: the model-save path, top-level
 seed threading (no `thread_rng` in production paths), config manifests,
 checkpoint/resume, bench-suite, token caches, split checks, and first-run
 script all exist now. Still open:
-- The dense latent core learns on planted structure. The effective ternary
-  projection does **not** preserve that learning, so QAT or a better ternary
-  training path remains open before Bet 1 can be judged.
+- The dense latent core learns on planted structure, and QAT makes the
+  effective ternary projection learn the same planted diagnostic. Bet 1 still
+  needs real-corpus QAT vs matched f32/latent controls before it can be judged.
 - The first real run crystallized zero modules because the frozen random core
   did not expose useful structure. Crystallization should now be re-tested only
   after Phase 6 trains a real-corpus core with controls.

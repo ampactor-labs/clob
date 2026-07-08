@@ -1,0 +1,12 @@
+verdict = PASS
+structured_sections_beating_both = 4/4
+whole_qat_ternary_nll = 0.093766
+whole_qat_latent_nll = 6.681042
+whole_unigram_nll = 3.152967
+whole_bigram_laplace_nll = 3.212050
+phase5_latent_projection_nll = 5.686825
+whole_qat_ternary_vs_unigram = 0.029739
+whole_qat_ternary_vs_phase5_projection = 0.016488
+
+pass_conditions = true,true,true,true,true,true
+kill_conditions = false,false,false
