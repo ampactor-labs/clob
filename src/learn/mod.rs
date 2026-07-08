@@ -1,5 +1,6 @@
 //! Online learning — streaming ternary SGD for crystallization.
 
+pub mod backprop;
 pub mod check;
 pub mod grad;
 pub mod optimizer;

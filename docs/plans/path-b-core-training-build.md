@@ -34,12 +34,22 @@ Already present:
 
 Missing:
 
-- `dL/dx` for every trainable layer beyond the checked
-  linear/RMSNorm/GLU/MLGRU/readout leaves.
-- Per-timestep activation capture for truncated BPTT.
-- Full-model training tape and end-to-end tiny-model gradient check.
-- Untied trainable readout.
-- A supervised `train` subcommand with manifests and checkpoints.
+- ~~`dL/dx` for every trainable layer beyond the checked
+  linear/RMSNorm/GLU/MLGRU/readout leaves.~~ **Done** — the full-model
+  composition in `src/learn/backprop.rs` produces `dL/dx` through the whole
+  dense stack.
+- ~~Per-timestep activation capture for truncated BPTT.~~ **Done** — the
+  forward tape in `backprop.rs` records every activation the window backward
+  needs.
+- ~~Full-model training tape and end-to-end tiny-model gradient check.~~
+  **Done** — `dense_model_end_to_end_gradient_matches_finite_difference`
+  (T=3) and `single_token_window_also_checks` gate it, plus
+  `every_trainable_family_has_nonzero_gradient` guards against a vacuous pass.
+- ~~Untied trainable readout.~~ **Done in the training path** — `backprop.rs`
+  keeps `embed` and `readout` as independent `[vocab × d_model]` tables with
+  separate gradients. The deployed inference model still ties them; wiring the
+  untied readout into the persisted model is Phase 4.
+- A supervised `train` subcommand with manifests and checkpoints. **← next.**
 
 ## Locked Direction
 
@@ -101,7 +111,7 @@ The check must include:
 Do not proceed to model training until a tiny SSM finite-difference check is
 green. Most plausible silent failures live here.
 
-## Phase 3: Full Dense Model Backward
+## Phase 3: Full Dense Model Backward — **Done** (`src/learn/backprop.rs`)
 
 Add a training forward that records every activation needed for a BPTT window.
 Compose the block backward with residual-gradient splitting, pre-norm order,
@@ -109,6 +119,16 @@ SSM gradients, channel mixer gradients, final norm, and unembedding.
 
 Gate this phase with an end-to-end finite-difference check on a tiny dense
 model, sampling parameters from every trainable family.
+
+Shipped: `DenseModel::{forward_window, backward_window}` run truncated BPTT
+over a T-token window through the dense stack (`h_mid = x + SSM(norm1(x))`;
+`x = h_mid + GLU(MLGRU(norm2(h_mid)))`), carrying a future-state gradient per
+layer for both the SSM and MLGRU recurrences, with an untied readout. The
+finite-difference gate passes at T=1 (~1%) and T=3 (~1.3%, f32-precision
+limited on the smaller through-time gradients); a coverage test asserts every
+trainable family is non-trivially exercised so the check can't pass vacuously.
+The composition differentiates the f32 latent surrogate; the STE→ternary
+bridge stays separate per the trust chain.
 
 ## Phase 4: Train Command
 
