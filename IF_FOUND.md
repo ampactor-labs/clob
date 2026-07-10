@@ -17,29 +17,35 @@ the raw experience. Every improvement is meant to cost *less* energy, not more.
 The design thesis is in `ARCHITECTURE.md`; the roadmap and resume state in
 `PLAN.md`; the verified ground truth in the project's memory file.
 
-It is, at time of writing, ~11k lines of Rust, 118 passing tests, byte-for-byte
+It is, at time of writing, ~11k lines of Rust, 119 passing tests, byte-for-byte
 reproducible from a single seed. The plumbing composes end to end. That part is
 real and was built carefully.
 
-## Current update (2026-07-08)
+## Current update (2026-07-10)
 
 The warning below was the right warning when written, but Path B has now moved.
-The core **does learn** in the dense latent training path: the full-model
-backward is finite-difference checked, `clob train` exists, and the Phase 5
-planted-pattern run passed (`experiments/2026-07-08_phase5_planted_patterns/`).
-A small dense latent core drove the diagnostic corpus to NLL `0.279761` versus
-byte unigram `3.152967`, with all four structured sections beating both byte
-unigram and Laplace-smoothed byte bigram baselines. The first QAT diagnostic
-also passed (`experiments/2026-07-08_qat_planted_projection/`): effective
-ternary weights reached NLL `0.093766` on the same planted corpus.
+The core **does learn**: the full-model backward is finite-difference checked,
+`clob train` exists, the Phase 5 planted-pattern run passed
+(`experiments/2026-07-08_phase5_planted_patterns/`, latent NLL `0.279761` vs
+byte unigram `3.152967`), and forward-through-ternary QAT closed the planted
+projection gap (`experiments/2026-07-08_qat_planted_projection/`, effective
+ternary NLL `0.093766`).
 
-Do not over-read that. The pure-latent deployable ternary projection lost the
-learning (`5.686825` whole-corpus NLL), and QAT has only passed on the planted
-diagnostic, not the held-out real corpus. Crystallization has not yet been
-re-judged on a trained core, and Bet 7's first real test falsified the positive
-lambda1/capability tracking hypothesis. Read `PLAN.md`,
-`docs/plans/path-b-core-training-build.md`, `experiments/2026-07-08_bet7/`,
-and `experiments/2026-07-08_qat_planted_projection/` for the current state.
+Bet 1 now has its first real measurement, and it passes at small scale
+(`experiments/2026-07-10_phase6_real_qat/`). On the pinned real corpus with
+held-out evaluation, the QAT-trained deployable ternary core reached NLL
+`3.797228` against its matched f32 control's `3.801559` — gap `0.9989×`
+against a registered pass line of `≤ 1.25×` — while the f32 control's naive
+ternary projection sat at `6.166165`, worse than the unigram baseline. The
+ternary core families are `12.65×` smaller resident than f32.
+
+Do not over-read that. One seed, one corpus, d=64; the embedding and readout
+tables stay f32 in both arms, so the whole-model memory ratio is `1.34×`, not
+`12.65×`. Crystallization has not yet been re-judged on a trained core, and
+Bet 7's first real test falsified the positive lambda1/capability tracking
+hypothesis. Read `PLAN.md`, `docs/plans/path-b-core-training-build.md`,
+`experiments/2026-07-08_bet7/`, and
+`experiments/2026-07-10_phase6_real_qat/` for the current state.
 
 ## What clob is NOT — read this part twice
 
@@ -112,10 +118,10 @@ it deserves to be.
 1. Read `ARCHITECTURE.md`, `ATTRACTOR.md`, `PLAN.md`, and
    `docs/plans/path-b-core-training-build.md`.
 2. Read the receipts in `experiments/2026-07-08_bet7/` and
-   `experiments/2026-07-08_phase5_planted_patterns/`.
+   `experiments/2026-07-10_phase6_real_qat/`.
 3. `cargo test --release` — should be green.
-4. Continue at Path B Phase 6: real-corpus training with controls, then
-   crystallization ablation on a trained substrate.
+4. Continue at Path B Phase 6, second half: crystallization ablation on the
+   trained substrate (Bet 2's equal-compute line).
 5. Keep threshold changes separate from the runs they judge.
 
 ## Why it was not simply left running

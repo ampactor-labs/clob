@@ -1,0 +1,8 @@
+kind	run	mode	lr	wd	selected_step	nll4k	full_nll	note
+run	latent_A	latent	5e-3	0.01	00015000	3.919685	3.883815	selected artifact full-holdout (latent view)
+run	latent_B	latent	2e-3	0.0	00015000	3.844063	3.801559	selected artifact full-holdout (latent view)
+run	qat_A	qat	5e-3	0.01	00015000	3.883089	3.841970	selected artifact full-holdout (ternary view)
+run	qat_B	qat	2e-3	0.0	00015000	3.850091	3.797228	selected artifact full-holdout (ternary view)
+context	latent_B	latent	-	-	-	-	-0.0241	lambda1 of latent representative
+context	qat_B	qat	-	-	-	-	-0.0675	lambda1 of qat representative (ternary view)
+context	latent_B	latent	-	-	-	-	6.166165	latent representative effective-ternary projection, full holdout

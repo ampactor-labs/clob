@@ -775,16 +775,22 @@ would have saved it.
 
 ---
 
-## Current status (updated 2026-07-04)
+## Current status (updated 2026-07-10)
 
 This section is maintained as Part V's bets accumulate evidence. Each bet's
 status is either "untested" (infrastructure not in place), "instrumented"
 (the gate exists and can fire, but hasn't been exercised on real data),
 or a measured signal.
 
-- **Bet 1: Ternary + SSM retains useful capability.** Untested. The
-  first real run (Phase N + Phase L corpus) is where this gets measured
-  against a matched f32 baseline.
+- **Bet 1: Ternary + SSM retains useful capability.** First measured
+  signal — PASS at small scale
+  (`experiments/2026-07-10_phase6_real_qat/`, 2026-07-10). On the pinned
+  real corpus, the QAT-trained deployable ternary core's held-out CE gap
+  vs the matched f32 control is 0.9989× (registered pass ≤ 1.25×), and
+  the ternary core families are 12.65× smaller resident than f32
+  (registered pass ≥ 10×). Limits: one seed, one corpus, d=64;
+  embedding/readout stay f32 in both arms; whole-model memory 1.34×.
+  Not yet evidence at target scale.
 - **Bet 2: Crystallization produces net predictive gain.** Instrumented.
   Phase K's `bench-suite` is the A/B harness; Phase L's diagnostic
   corpus with planted structural patterns will be the first test.

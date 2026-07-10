@@ -149,6 +149,71 @@ Fixed before results, applying regardless of outcome:
 
 ## Results
 
-(To be filled in by the run. The verdict rule above is frozen as of this
-pre-registration; if a threshold or scope turns out to be wrongly chosen, it
-changes in a separate commit that does not also report this run.)
+**Verdict: PASS on both registered Bet 1 lines.** The validity precondition
+held, the capability gap fired the pass condition, no kill condition fired.
+Machine-readable verdict: `verdict.txt`; per-run receipts: `results.tsv`,
+`curves.tsv`; provenance: `runinfo.txt` (run at the pre-registration commit
+`92b1af6`).
+
+All four runs selected their step-15000 checkpoint by the registered curve
+rule — the same best-step the Bet 7 sweep found:
+
+| run | mode | lr | wd | selected | curve nll (4k) | full holdout NLL |
+|:--|:--|--:|--:|--:|--:|--:|
+| latent_A | latent | 5e-3 | 0.01 | 15000 | 3.9197 | 3.8838 |
+| latent_B | latent | 2e-3 | 0.0 | 15000 | 3.8441 | **3.8016** |
+| qat_A | qat | 5e-3 | 0.01 | 15000 | 3.8831 | 3.8420 |
+| qat_B | qat | 2e-3 | 0.0 | 15000 | 3.8501 | **3.7972** |
+
+Registered checks:
+
+- Validity: the f32 representative (`latent_B`, `3.801559`) beats the
+  holdout unigram baseline (`4.776462`). OK.
+- Capability gap: `3.797228 / 3.801559 = 0.9989×`, against pass `≤ 1.25×`
+  and kill `> 1.5×`. **PASS.** Read this as capability parity: a 0.004-nat
+  difference on one seed is noise, not "ternary beats f32."
+- Memory, core families: `642,048 / 50,736 = 12.65×` smaller, against pass
+  `≥ 10×` and kill `< 8×`. **PASS.** The pre-registration's hand arithmetic
+  above says `12.66×`; the scripted derivation in `run.sh` gives `12.65×`
+  (12.6547) — a rounding slip in the hand calculation, same conclusion. The
+  whole-model context ratio is `1.34×` as pre-computed.
+
+The context rows sharpen what QAT bought. The f32 representative's naive
+effective-ternary projection measures `6.166165` on the full holdout — worse
+than the unigram baseline. The QAT arm's deployed ternary measures
+`3.797228`. On this corpus, forward-through-ternary training does not narrow
+the deployment gap; it removes it.
+
+Replication: `latent_A` (the Bet 7 recipe) reproduces the Bet 7 sweep's
+step-15000 curve point (`3.9197` here vs `3.92` recorded 2026-07-08).
+Recipe B (`lr 2e-3, wd 0`) beat recipe A for **both** arms, which is why the
+grid ran both recipes on both arms.
+
+Regime context (no verdict attached): λ₁ of the latent representative is
+`−0.0241` (state-memory horizon ≈ 41 tokens); the QAT representative's
+ternary dynamics measure `−0.0675` (≈ 15 tokens). Both sit far nearer the
+edge than the `−0.28` the Bet 7 sweep recorded for its best checkpoint under
+recipe A — a recipe→regime effect this run was not designed to judge. It
+goes on the Bet 7 open-thread pile.
+
+## Conclusion
+
+Bet 1's first real measurement passes at this configuration: on the pinned
+real corpus, with held-out evaluation, the deployable effective-ternary core
+trained by QAT costs no measurable capability against its matched f32
+control, and the ternary core families are 12.65× smaller resident than
+f32.
+
+What this does **not** say, kept in one place: one corpus, one seed, one
+small architecture (~1.3 epochs, batch-1 AdamW); both arms keep f32
+embedding/readout tables (72% of parameters), so this is parity for the
+recurrent core's ternarization, not for a fully-ternary model; the
+whole-model memory ratio at this width is 1.34×. Bet 1 moves from untested
+to first-pass-at-small-scale — validation at target scale still requires
+larger width, more seeds, and a second corpus.
+
+Next honest gates: the second half of Phase 6 — re-enable crystallization on
+this trained substrate and judge Bet 2's equal-compute line — plus the named
+follow-ups: stamp training mode into the dense artifact schema (the latent
+view of a QAT artifact is still a footgun), and the long-range-dependency
+corpus test for Bet 7.

@@ -1,0 +1,9 @@
+latent representative: latent_B, full-holdout NLL 3.801559
+qat representative:    qat_B, full-holdout NLL 3.797228 (ternary view)
+holdout unigram baseline: 4.776462
+validity precondition (latent < unigram): OK
+capability gap = 3.797228 / 3.801559 = 0.9989x  (pass <=1.25, kill >1.5)
+BET 1 CAPABILITY LINE: PASS
+memory, core families: f32 642048 B vs deployed 50736 B = 12.65x smaller  (pass >=10x, kill <8x)
+memory, whole model (context): f32 2316128 B vs deployed 1724816 B = 1.34x
+BET 1 MEMORY LINE: PASS

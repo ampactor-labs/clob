@@ -18,13 +18,10 @@ compiled ternary modules and discards the raw episodes once compressed.
 See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 "unsurpassable" rhetoric of earlier drafts).
 
-## State (updated 2026-07-08 — QAT closes the planted projection gap)
+## State (updated 2026-07-10 — Phase 6 controls pass; Bet 1 first measurement)
 
-**Current live state.** Branch `main` remains unpushed and is now ahead of
-`origin/main` by the Path B / Bet 7 work plus the Phase 5 and QAT experiment
-receipts.
-`cargo test --release` passes 118 tests. Treat the older commit list below as
-historical orientation, not a current HEAD list.
+**Current live state.** `cargo test --release` passes 119 tests. Treat the
+older commit list below as historical orientation, not a current HEAD list.
 
 The core now learns in the **dense latent** Path B training path. Phases 0–4
 landed the checked full-model backward and `clob train`; Phase 5 then passed on
@@ -49,15 +46,35 @@ the planted diagnostic corpus:
 - QAT artifacts currently have a bad latent view (`6.681042` whole-corpus NLL
   in the diagnostic), so judge them through `eval-dense --ternary`.
 
+The Phase 6 controls half is now on record
+(`experiments/2026-07-10_phase6_real_qat/`, pre-registered at `92b1af6`):
+
+- Four-run grid (latent/QAT × two recipes), `small`, seed 1, window 32,
+  20000 steps on the pinned Moby-Dick corpus; every run selected its
+  step-15000 checkpoint by the registered holdout curve.
+- Full-holdout: QAT deployed ternary `3.797228` vs matched f32 control
+  `3.801559` — gap `0.9989×`, a decisive pass of Bet 1's registered
+  `≤ 1.25×` line. Read as capability parity (one seed), not superiority.
+- The f32 control's naive ternary projection measured `6.166165` (worse
+  than the `4.776462` unigram baseline): QAT removes the real-corpus
+  deployment gap, it doesn't just narrow it.
+- Memory line passes on the registered core-family scope (`12.65×`);
+  whole-model ratio is `1.34×` (f32 vocab tables dominate at d=64) and
+  stays reported as context.
+- `latent_A` reproduced the Bet 7 sweep's step-15000 point; recipe B
+  (`lr 2e-3, wd 0`) beat recipe A for both arms.
+
 Bet 7's first real test is also on record in `experiments/2026-07-08_bet7/`:
 the literal registered verdict is INDETERMINATE, but the positive
 lambda1/capability tracking hypothesis is falsified. Do not rewrite that result
 into confirmation.
 
-**Next gate.** Phase 6: run the real-corpus QAT vs matched f32/latent controls,
-then judge crystallization separately on a trained substrate. The planted QAT
-pass is not Bet 1; Bet 1 needs held-out real-corpus capability and memory
-receipts.
+**Next gate.** Phase 6 second half: re-enable crystallization on the trained
+substrate and judge Bet 2's equal-compute line (modules-loaded vs cleared on
+held-out data). Standing follow-ups: stamp training mode into the dense
+artifact schema (a QAT artifact's latent view is still a footgun), the
+long-range-dependency corpus test for Bet 7, and the parked ρ ≤ −0.2 kill
+threshold amendment decision.
 
 ## Historical state (updated 2026-07-04 — the attractor track landed)
 

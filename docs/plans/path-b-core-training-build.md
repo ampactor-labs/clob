@@ -216,22 +216,33 @@ ternary projection measured `5.686825` NLL on the whole corpus.
 
 Only after this passes should crystallization be evaluated again.
 
-## Phase 6: Real Corpus And Controls
+## Phase 6: Real Corpus And Controls — controls half **done**
 
 Train QAT ternary and matched f32/latent controls on the pinned real corpus.
 The first real Bet 1 measurement is held-out CE gap versus the f32 control and
 memory savings against the same architecture.
 
-Then re-enable crystallization and judge Bet 2 with equal compute:
-modules-loaded must reduce held-out NLL versus modules-cleared.
+Shipped (2026-07-10): `experiments/2026-07-10_phase6_real_qat/` pre-registers
+and reports the four-run grid (latent/QAT × two recipes, `small`, seed 1,
+20000 steps). Full-holdout: QAT deployed ternary `3.797228` vs f32 control
+`3.801559` — gap `0.9989×`, passing Bet 1's registered `≤ 1.25×` capability
+line — while the control's naive ternary projection measured `6.166165`,
+worse than the `4.776462` unigram baseline. Memory passes on the registered
+core-family scope (`12.65×`); the whole-model ratio is `1.34×` and stays
+reported. `latent_A` reproduced the Bet 7 sweep's step-15000 point.
+
+Still open in this phase: re-enable crystallization and judge Bet 2 with
+equal compute: modules-loaded must reduce held-out NLL versus
+modules-cleared, on the trained substrate.
 
 ## Trust Chain
 
 Gradient checker -> per-layer checks -> SSM BPTT check -> tiny full-model check
 -> trivial-corpus loss drop -> planted-pattern run (passed) -> real-corpus f32
-control -> crystallization ablation.
+control (passed) -> crystallization ablation.
 
 The dense latent core and the QAT effective-ternary path now earn the claim
-that they learn on planted structure. Do not extend that claim to real-corpus
-deployability or crystallization until the Phase 6 controls and equal-compute
-ablations pass.
+that they learn on planted structure *and* hold capability parity with the
+f32 control on the pinned real corpus at small scale. Do not extend that
+claim to crystallization until the equal-compute ablation passes on the
+trained substrate.
