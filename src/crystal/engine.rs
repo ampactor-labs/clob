@@ -77,6 +77,19 @@ impl CrystallizationEngine {
         self.next_id = id;
     }
 
+    /// Insert a pre-built module — one loaded from disk, or a test fixture.
+    /// Its `d_model` must match the engine's scratch buffer.
+    pub fn push_module(&mut self, module: CrystalModule) {
+        assert_eq!(
+            module.d_model,
+            self.buf_module_out.len(),
+            "module d_model {} != engine d_model {}",
+            module.d_model,
+            self.buf_module_out.len(),
+        );
+        self.modules.push(module);
+    }
+
     /// Run one crystallization cycle.
     ///
     /// `embed_table` is the model's tied embed/unembed matrix, row-major

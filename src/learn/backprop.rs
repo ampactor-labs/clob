@@ -344,8 +344,11 @@ impl DenseModel {
     }
 
     /// Step one token, carrying and updating the recurrent state. Returns the
-    /// logits. This is `forward_window`'s per-token forward without the tape.
-    pub fn decode_step(&mut self, token: u32) -> Vec<f32> {
+    /// post-final-norm hidden state and the logits. The hidden is the point
+    /// where crystal modules apply (additive, pre-unembed); callers testing
+    /// module corrections read it here and re-unembed after applying modules.
+    /// This is `forward_window`'s per-token forward without the tape.
+    pub fn decode_step_capture(&mut self, token: u32) -> (Vec<f32>, Vec<f32>) {
         let d = self.dims.d_model;
         let ssm_dims = self.dims.ssm();
         let mut x = self.embed[token as usize * d..(token as usize + 1) * d].to_vec();
@@ -401,9 +404,35 @@ impl DenseModel {
 
         let mut fn_out = vec![0.0f32; d];
         rmsnorm_forward(&x, &self.final_norm_w, RMS_EPS, &mut fn_out);
+        let logits = self.unembed(&fn_out);
+        (fn_out, logits)
+    }
+
+    /// Step one token, returning logits only (the common decode path).
+    pub fn decode_step(&mut self, token: u32) -> Vec<f32> {
+        self.decode_step_capture(token).1
+    }
+
+    /// Unembed a post-final-norm hidden state to vocab logits through the
+    /// trained readout. Exposed so a caller can re-unembed after applying a
+    /// crystal-module correction to the hidden.
+    pub fn unembed(&self, hidden: &[f32]) -> Vec<f32> {
         let mut logits = vec![0.0f32; self.dims.vocab];
-        unembed_forward(&self.readout, self.dims.vocab, d, &fn_out, &mut logits);
+        unembed_forward(&self.readout, self.dims.vocab, self.dims.d_model, hidden, &mut logits);
         logits
+    }
+
+    /// The untied readout table, row-major `[vocab × d_model]`. This is the
+    /// token-direction table the distiller needs to relate hidden-state
+    /// corrections to logits — the dense analog of the deployed core's tied
+    /// embed/unembed table.
+    pub fn readout(&self) -> &[f32] {
+        &self.readout
+    }
+
+    /// This model's dimensions.
+    pub fn dims(&self) -> DenseDims {
+        self.dims
     }
 }
 

@@ -526,6 +526,57 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Bet 2 on a trained dense core: crystallize its own prediction errors on
+    /// the train corpus, then measure held-out NLL with modules loaded vs
+    /// cleared at equal compute. One forward pass scores both arms; tokens no
+    /// module routes to are identical between them.
+    CrystalDense {
+        /// Trained `.dense` artifact (Path B) — the substrate to crystallize on.
+        #[arg(long)]
+        dense: PathBuf,
+        /// Train corpus (text or `.tokens`); episodes are captured from it.
+        #[arg(long)]
+        train: PathBuf,
+        /// Holdout corpus (text or `.tokens`); the A/B is measured on it.
+        #[arg(long)]
+        holdout: PathBuf,
+        #[arg(long)]
+        tokenizer: Option<PathBuf>,
+        /// Window for capture and eval (state detached each window; match train).
+        #[arg(long, default_value_t = 32)]
+        window: usize,
+        /// Force the effective-ternary view. Without this or --latent, the
+        /// artifact's stamped deployment view is used.
+        #[arg(long)]
+        ternary: bool,
+        /// Force the f32 latent view (mutually exclusive with --ternary).
+        #[arg(long)]
+        latent: bool,
+        /// Record an episode where prediction error 1-P(actual) exceeds this.
+        #[arg(long, default_value_t = 0.5)]
+        error_threshold: f32,
+        /// Cap on episodes captured from the train corpus.
+        #[arg(long, default_value_t = 4000)]
+        max_episodes: usize,
+        /// k-means cluster count for crystallization.
+        #[arg(long, default_value_t = 16)]
+        n_clusters: usize,
+        /// Refine clusters by predictive equivalence before distilling.
+        #[arg(long)]
+        causal: bool,
+        /// Future horizon for causal refinement (<= recorded episode horizon).
+        #[arg(long, default_value_t = 8)]
+        causal_horizon: usize,
+        /// Minimum cosine similarity for a module to route at eval.
+        #[arg(long, default_value_t = 0.3)]
+        activation_threshold: f32,
+        /// Cap on holdout tokens evaluated (0 = all).
+        #[arg(long, default_value_t = 0)]
+        max_eval_tokens: usize,
+        /// Optional directory to save the crystallized modules.
+        #[arg(long)]
+        modules_out: Option<PathBuf>,
+    },
     /// Compile crystallized modules to native code (demo: ELF emission).
     Compile {
         #[arg(long, default_value = "episodes")]
@@ -701,6 +752,17 @@ fn main() {
         }
         Commands::Regime { model, dense, ternary, latent, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
             cmd_regime(&model, &dense, ternary, latent, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
+        }
+        Commands::CrystalDense {
+            dense, train, holdout, tokenizer, window, ternary, latent, error_threshold,
+            max_episodes, n_clusters, causal, causal_horizon, activation_threshold,
+            max_eval_tokens, modules_out,
+        } => {
+            cmd_crystal_dense(
+                &dense, &train, &holdout, &tokenizer, window, ternary, latent, error_threshold,
+                max_episodes, n_clusters, causal, causal_horizon, activation_threshold,
+                max_eval_tokens, &modules_out,
+            );
         }
         Commands::Compile { memory_dir: _, modules_dir } => {
             cmd_compile(&modules_dir);
@@ -2391,6 +2453,104 @@ fn cmd_eval_dense(
     println!(
         "{{\"nll\":{:.6},\"unigram\":{:.6},\"ratio\":{:.4},\"n\":{},\"ternary\":{}}}",
         nll, base, nll / base, n, ternary,
+    );
+}
+
+/// Bet 2 on a trained dense core: crystallize its own errors on the train
+/// corpus, then A/B the holdout with modules loaded vs cleared at equal
+/// compute. Orchestration only — capture, cycle, and A/B live in
+/// `eval::bet2_dense` and `crystal::engine`.
+#[allow(clippy::too_many_arguments)]
+fn cmd_crystal_dense(
+    dense_path: &PathBuf, train_path: &PathBuf, holdout_path: &PathBuf,
+    tokenizer_path: &Option<PathBuf>, window: usize, ternary: bool, latent: bool,
+    error_threshold: f32, max_episodes: usize, n_clusters: usize, causal: bool,
+    causal_horizon: usize, activation_threshold: f32, max_eval_tokens: usize,
+    modules_out: &Option<PathBuf>,
+) {
+    use clob::crystal::causal::CausalConfig;
+    use clob::crystal::engine::{CrystalConfig, CrystallizationEngine};
+    use clob::crystal::store;
+    use clob::eval::bet2_dense::{ab_eval, capture_episodes};
+    use clob::learn::backprop::{ternarize_matrix_families, DenseModel};
+    use clob::learn::train::TrainedDense;
+    use clob::memory::ring::EpisodicMemory;
+
+    let tokenizer = load_tokenizer(tokenizer_path);
+    let bytes = std::fs::read(dense_path).expect("failed to read .dense artifact");
+    let art = TrainedDense::from_bytes(&bytes).expect("failed to parse .dense artifact");
+    let view_ternary = resolve_dense_view(art.mode, ternary, latent);
+    let params = if view_ternary {
+        ternarize_matrix_families(art.dims, &art.latents)
+    } else {
+        art.latents.clone()
+    };
+    let dims = art.dims;
+    let vocab = dims.vocab;
+
+    if causal_horizon > EPISODE_FUTURE_HORIZON {
+        eprintln!(
+            "[crystal-dense] WARN: --causal-horizon {} exceeds the {}-token future recorded per \
+             episode; it will behave as {}.",
+            causal_horizon, EPISODE_FUTURE_HORIZON, EPISODE_FUTURE_HORIZON,
+        );
+    }
+
+    let train = load_regime_tokens(train_path, &tokenizer, vocab);
+    let holdout = load_regime_tokens(holdout_path, &tokenizer, vocab);
+
+    // Capture the core's own high-error episodes from the train corpus.
+    let mem_dir = std::env::temp_dir().join(format!("clob_crystaldense_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mem_dir);
+    let memory = EpisodicMemory::open(&mem_dir, max_episodes.max(1)).expect("open scratch memory");
+    let mut model = DenseModel::from_flat(dims, &params);
+    let recorded = capture_episodes(
+        &mut model, &train, window, error_threshold, max_episodes, EPISODE_FUTURE_HORIZON, &memory,
+    );
+    eprintln!(
+        "[crystal-dense] captured {} episodes (error > {}) from {} train tokens",
+        recorded, error_threshold, train.len(),
+    );
+
+    // Crystallize, using the trained readout as the token-direction table.
+    let mut engine = CrystallizationEngine::new(dims.d_model, CrystalConfig {
+        min_episodes: 20,
+        batch_size: max_episodes.max(500),
+        n_clusters,
+        activation_threshold,
+        causal: causal.then(|| CausalConfig { horizon: causal_horizon, ..Default::default() }),
+        ..CrystalConfig::default()
+    });
+    let n_modules = engine.cycle(&memory, Some(model.readout()), vocab);
+    eprintln!("[crystal-dense] crystallized {} modules; {}", n_modules, engine.stats());
+    let _ = std::fs::remove_dir_all(&mem_dir);
+
+    if let Some(dir) = modules_out {
+        std::fs::create_dir_all(dir).ok();
+        for module in engine.modules() {
+            if let Err(e) = store::save_module(module, dir) {
+                eprintln!("[crystal-dense] save error id={}: {}", module.id, e);
+            }
+        }
+    }
+
+    // Equal-compute A/B on the holdout.
+    model.reset_state();
+    let r = ab_eval(&mut model, &mut engine, &holdout, window, max_eval_tokens);
+    let frac_act = if r.n > 0 { r.n_activated as f64 / r.n as f64 } else { 0.0 };
+    eprintln!(
+        "[crystal-dense] holdout: cleared {:.6}, loaded {:.6}, Δ {:+.3}% ({} modules, {:.1}% tokens routed)",
+        r.nll_cleared, r.nll_loaded, r.delta_pct(), n_modules, frac_act * 100.0,
+    );
+    println!(
+        "{{\"view\":\"{}\",\"episodes\":{},\"modules\":{},\"n\":{},\
+\"nll_cleared\":{:.6},\"nll_loaded\":{:.6},\"delta_pct\":{:.4},\
+\"n_activated\":{},\"frac_activated\":{:.4},\
+\"nll_cleared_activated\":{:.6},\"nll_loaded_activated\":{:.6},\"delta_pct_activated\":{:.4}}}",
+        if view_ternary { "ternary" } else { "latent" }, recorded, n_modules, r.n,
+        r.nll_cleared, r.nll_loaded, r.delta_pct(),
+        r.n_activated, frac_act,
+        r.nll_cleared_activated, r.nll_loaded_activated, r.delta_pct_activated(),
     );
 }
 
