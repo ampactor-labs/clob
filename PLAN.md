@@ -18,10 +18,29 @@ compiled ternary modules and discards the raw episodes once compressed.
 See `ARCHITECTURE.md` for the long-form manifesto (now pruned of the
 "unsurpassable" rhetoric of earlier drafts).
 
-## State (updated 2026-07-10 — Phase 6 controls pass; Bet 1 first measurement)
+## State (updated 2026-07-10 — Phase 6 complete: Bet 1 passes, Bet 2 killed)
 
-**Current live state.** `cargo test --release` passes 119 tests. Treat the
+**Current live state.** `cargo test --release` passes 120 tests. Treat the
 older commit list below as historical orientation, not a current HEAD list.
+
+Both halves of Phase 6 are now on record, and they split:
+
+- **Bet 1 (controls) PASS** — `experiments/2026-07-10_phase6_real_qat/`. QAT
+  deployed ternary reaches held-out NLL `3.797228` vs the matched f32 control
+  `3.801559` (gap `0.9989×`, registered pass ≤ `1.25×`), core families 12.65×
+  smaller. Capability parity at small scale.
+- **Bet 2 (crystallization) KILL** — `experiments/2026-07-10_phase6_bet2/`,
+  the first crystallization test on a *trained* substrate. Equal-compute A/B
+  (`clob crystal-dense`) on the same QAT step-15000 core: the deployed ternary
+  view crystallizes **zero** distillable modules across the whole registered
+  grid (n_clusters, causal, threshold all varied — every cluster fails the
+  coherence/MDL gate), so loaded == cleared (`delta 0` → kill). The f32-latent
+  view forms 2 modules that *hurt* held-out by 3.6% (overfit-and-drift). The
+  crystallization loop as built adds no net held-out gain on a trained core.
+  Named follow-ups (each needs its own pre-registration): the capture
+  threshold (error > 0.5 starves the clusterer of coherent mid-error
+  structure) and the distill target (avg_error≈1.0 clusters crystallize into
+  harmful corrections). QAT-artifact view footgun is closed (`7dc3aab`).
 
 The core now learns in the **dense latent** Path B training path. Phases 0–4
 landed the checked full-model backward and `clob train`; Phase 5 then passed on
@@ -69,12 +88,19 @@ the literal registered verdict is INDETERMINATE, but the positive
 lambda1/capability tracking hypothesis is falsified. Do not rewrite that result
 into confirmation.
 
-**Next gate.** Phase 6 second half: re-enable crystallization on the trained
-substrate and judge Bet 2's equal-compute line (modules-loaded vs cleared on
-held-out data). Standing follow-ups: stamp training mode into the dense
-artifact schema (a QAT artifact's latent view is still a footgun), the
-long-range-dependency corpus test for Bet 7, and the parked ρ ≤ −0.2 kill
-threshold amendment decision.
+**Next gate.** Phase 6 is complete. The live question is what to do about the
+Bet 2 kill, and it forks:
+
+- **Crystallization redesign** — the kill implicates two specific things, each
+  its own pre-registered run: capture below the error-0.5 threshold (does
+  coherent mid-error structure exist that this run never sampled?), and the
+  distill target / a held-out gate inside distillation (the avg_error≈1.0
+  clusters that crystallized into harmful corrections). This is the honest
+  continuation of the crystallization thesis.
+- **Bet 7 long-range corpus** — is the capability-by-forgetting contraction
+  result corpus-specific? Needs a long-range-dependency corpus (network +
+  user trigger).
+- Parked: the ρ ≤ −0.2 Bet 7 kill-threshold amendment (Morgan's call).
 
 ## Historical state (updated 2026-07-04 — the attractor track landed)
 

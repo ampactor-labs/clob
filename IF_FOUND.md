@@ -41,11 +41,22 @@ ternary core families are `12.65×` smaller resident than f32.
 
 Do not over-read that. One seed, one corpus, d=64; the embedding and readout
 tables stay f32 in both arms, so the whole-model memory ratio is `1.34×`, not
-`12.65×`. Crystallization has not yet been re-judged on a trained core, and
-Bet 7's first real test falsified the positive lambda1/capability tracking
-hypothesis. Read `PLAN.md`, `docs/plans/path-b-core-training-build.md`,
-`experiments/2026-07-08_bet7/`, and
-`experiments/2026-07-10_phase6_real_qat/` for the current state.
+`12.65×`.
+
+Crystallization has now been judged on that trained core, and it was
+**falsified** (`experiments/2026-07-10_phase6_bet2/`). This is the first
+crystallization test on a substrate that can learn — every prior run was on a
+random core. On the deployed ternary core, crystallizing the core's own
+high-error episodes produced zero distillable modules across the whole
+registered grid (the errors of a trained core are too incoherent to compress);
+on the f32-latent core, the modules that did form reduced held-out capability
+by 3.6%. The crystallization loop — clob's central mechanism — adds no net
+held-out gain as built. That is the honest state: the core learns (Bet 1), but
+the loop that was supposed to make it *grow* does not yet pay. Bet 7's first
+real test also falsified the positive lambda1/capability tracking hypothesis.
+Read `PLAN.md`, `docs/plans/path-b-core-training-build.md`,
+`experiments/2026-07-08_bet7/`, `experiments/2026-07-10_phase6_real_qat/`, and
+`experiments/2026-07-10_phase6_bet2/` for the current state.
 
 ## What clob is NOT — read this part twice
 
@@ -119,9 +130,11 @@ it deserves to be.
    `docs/plans/path-b-core-training-build.md`.
 2. Read the receipts in `experiments/2026-07-08_bet7/` and
    `experiments/2026-07-10_phase6_real_qat/`.
-3. `cargo test --release` — should be green.
-4. Continue at Path B Phase 6, second half: crystallization ablation on the
-   trained substrate (Bet 2's equal-compute line).
+3. `cargo test --release` — should be green (120 tests).
+4. Phase 6 is complete (Bet 1 pass, Bet 2 kill). The live fork is the Bet 2
+   redesign — a pre-registered run that captures below the error-0.5 threshold
+   and/or adds a held-out gate to distillation — versus the Bet 7 long-range
+   corpus test. See PLAN.md's next-gate block.
 5. Keep threshold changes separate from the runs they judge.
 
 ## Why it was not simply left running

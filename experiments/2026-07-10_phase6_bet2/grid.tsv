@@ -1,0 +1,8 @@
+cell	n_clusters	causal	act_threshold	substrate	view	modules	nll_cleared	nll_loaded	delta_pct	frac_routed
+primary	16	on	0.3	qat_substrate	ternary	0	3.797228	3.797228	0.0000	0.0000
+nclusters_8	8	on	0.3	qat_substrate	ternary	0	3.797228	3.797228	0.0000	0.0000
+nclusters_32	32	on	0.3	qat_substrate	ternary	0	3.797228	3.797228	0.0000	0.0000
+causal_off	16	off	0.3	qat_substrate	ternary	0	3.797228	3.797228	0.0000	0.0000
+act_0p5	16	on	0.5	qat_substrate	ternary	0	3.797228	3.797228	0.0000	0.0000
+act_0p7	16	on	0.7	qat_substrate	ternary	0	3.797228	3.797228	0.0000	0.0000
+latent_ctx	16	on	0.3	latent_substrate	latent	2	3.801559	3.938844	-3.6113	0.5063

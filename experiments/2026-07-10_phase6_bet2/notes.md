@@ -109,6 +109,78 @@ Fixed before results:
 
 ## Results
 
-(To be filled in by the run. Thresholds above are frozen as of this
-pre-registration; if a threshold or the primary config is judged wrong, it
-changes in a separate commit that does not also report this run.)
+**Verdict: Bet 2 capability line KILL; drift line PASS-by-construction.**
+Machine-readable: `verdict.txt`; receipts: `results.tsv`, `grid.tsv`;
+provenance: `runinfo.txt` (run at the pre-registration commit `8cfd7d8`).
+
+The substrate reproduced Phase 6 exactly: cleared holdout NLL `3.797228` is
+bit-identical to `experiments/2026-07-10_phase6_real_qat/` qat_B step-15000
+(`3.797228`), so the substrate is the validated one and `crystal-dense`'s
+cleared arm agrees with `eval-dense --ternary`. Validity precondition holds
+(`3.797228 < 4.776462`).
+
+Primary config (n_clusters 16, causal on, activation threshold 0.3): capture
+recorded 4000 high-error episodes, clustering produced 20 causal-refined
+clusters — and distillation crystallized **zero modules**. With no modules,
+loaded == cleared, `delta_pct = 0.0000`, which is `≤ 0` → **KILL**.
+
+The kill is robust, and it has two distinct mechanisms across the grid:
+
+| cell | substrate/view | n_clusters | causal | act | modules | delta_pct |
+|:--|:--|--:|:--|--:|--:|--:|
+| primary | qat / ternary | 16 | on | 0.3 | 0 | +0.000 |
+| nclusters_8 | qat / ternary | 8 | on | 0.3 | 0 | +0.000 |
+| nclusters_32 | qat / ternary | 32 | on | 0.3 | 0 | +0.000 |
+| causal_off | qat / ternary | 16 | off | 0.3 | 0 | +0.000 |
+| act_0p5 | qat / ternary | 16 | on | 0.5 | 0 | +0.000 |
+| act_0p7 | qat / ternary | 16 | on | 0.7 | 0 | +0.000 |
+| latent_ctx | latent / f32 | 16 | on | 0.3 | 2 | **−3.611** |
+
+Mechanism 1 — the deployed ternary core yields **no distillable structure.**
+Every QAT cell (n_clusters 8/16/32, causal on/off, threshold 0.3/0.5/0.7)
+crystallized zero modules. Capture and clustering ran (4000 episodes, 16–20
+clusters); distillation rejected every cluster at its coherence or MDL gate.
+On a core that has actually learned, the tokens it is still surprised by
+(error > 0.5) are spread across too many distinct next-tokens to form a
+coherent correction direction — the distiller correctly declines to build a
+module from incoherent evidence, so there is nothing to integrate.
+
+Mechanism 2 — where modules *do* form, they **hurt.** The f32-latent context
+row crystallized 2 modules (from clusters of 57 and 172 episodes, both
+avg_error ≈ 1.0 — tokens the core gets flatly wrong) and they lowered held-out
+capability by 3.611%, routing on 50.6% of tokens. This is the exact failure
+Bet 2 names: modules overfit their train-error cluster and hurt on held-out
+data. Corrections learned as "push the hidden toward the cluster's majority
+next-token" do not generalize.
+
+Neither branch reaches Bet 2's ≥2% gain. The primary (ternary, verdict-bearing)
+kills on zero modules; the latent branch (context) would kill on a −3.6%
+regression. The drift line passes by construction: on the ternary substrate no
+token is routed at all (0.0% routed, drift trivially zero); the harness scores
+untouched tokens from the identical hidden in both arms regardless.
+
+## Conclusion
+
+Bet 2 is falsified at this configuration — the first time it has been testable,
+because it is the first trained substrate. On the deployed ternary core,
+crystallization of the core's high-error episodes produces nothing distillable
+across the whole registered grid; on the f32-latent core it produces modules
+that reduce held-out capability by 3.6%. The crystallization loop as
+implemented adds no net held-out predictive gain on a trained core.
+
+This is a finding about the loop as built, not a proof that no variant can
+work. Two things it directly implicates, as named follow-ups (each needs its
+own pre-registered run — do not retrofit this one):
+
+- **Capture starves the clusterer.** Recording only error > 0.5 episodes feeds
+  the distiller the hardest, most incoherent tokens — exactly the ones the
+  coherence gate rejects. A registered run capturing at a lower error
+  threshold, or all tokens, tests whether coherent mid-error structure exists
+  that this run never sampled.
+- **The distill target overfits.** avg_error ≈ 1.0 clusters crystallized into
+  actively harmful corrections. The "push toward readout[actual]" target, or
+  the absence of a held-out gate inside distillation, is the suspect.
+
+Both are crystallization-design questions. Bet 2's honest status is now a
+measured KILL on a trained core, superseding every prior "instrumented" or
+whisper result recorded on random cores.

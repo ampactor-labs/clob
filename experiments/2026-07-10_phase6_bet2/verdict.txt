@@ -1,0 +1,5 @@
+substrate cleared holdout NLL: 3.797228  (unigram 4.776462)
+validity precondition (cleared < unigram): OK
+primary delta_pct (loaded vs cleared): +0.0000%  (pass >=2.0, kill <=0.0)
+BET 2 CAPABILITY LINE: KILL
+BET 2 DRIFT LINE: PASS-by-construction (untouched tokens scored from identical hidden in both arms; drift = 0)

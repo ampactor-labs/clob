@@ -1,0 +1,8 @@
+metric	value
+substrate	qat_B step-15000 ternary view
+primary_nll_cleared	3.797228
+primary_nll_loaded	3.797228
+primary_delta_pct	0.0000
+primary_modules	0
+primary_frac_tokens_routed	0.0000
+holdout_unigram	4.776462

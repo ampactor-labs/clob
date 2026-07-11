@@ -231,18 +231,29 @@ worse than the `4.776462` unigram baseline. Memory passes on the registered
 core-family scope (`12.65×`); the whole-model ratio is `1.34×` and stays
 reported. `latent_A` reproduced the Bet 7 sweep's step-15000 point.
 
-Still open in this phase: re-enable crystallization and judge Bet 2 with
-equal compute: modules-loaded must reduce held-out NLL versus
-modules-cleared, on the trained substrate.
+Crystallization half **done** (2026-07-10): `experiments/2026-07-10_phase6_bet2/`
+pre-registers and reports the equal-compute Bet 2 test on the QAT step-15000
+substrate (`clob crystal-dense`, `src/eval/bet2_dense.rs`). **Verdict: KILL.**
+On the deployed ternary core the trained core's high-error episodes crystallize
+zero distillable modules across the whole registered grid (every cluster fails
+the coherence/MDL gate), so modules-loaded held-out NLL equals modules-cleared
+(`3.797228`, delta 0). On the f32-latent core 2 modules form and reduce held-out
+capability by 3.6% (overfit-and-drift). Neither reaches the registered +2% bar.
+This is the first crystallization test on a trained substrate; it supersedes the
+earlier whisper results on random cores. Named follow-ups (each its own
+pre-registration): capture below the error-0.5 threshold, and a held-out gate
+inside distillation.
 
 ## Trust Chain
 
 Gradient checker -> per-layer checks -> SSM BPTT check -> tiny full-model check
 -> trivial-corpus loss drop -> planted-pattern run (passed) -> real-corpus f32
-control (passed) -> crystallization ablation.
+control (passed) -> crystallization ablation (ran; **killed**).
 
-The dense latent core and the QAT effective-ternary path now earn the claim
-that they learn on planted structure *and* hold capability parity with the
-f32 control on the pinned real corpus at small scale. Do not extend that
-claim to crystallization until the equal-compute ablation passes on the
-trained substrate.
+The dense latent core and the QAT effective-ternary path earn the claim that
+they learn on planted structure *and* hold capability parity with the f32
+control on the pinned real corpus at small scale. They do **not** earn a
+crystallization claim: the equal-compute ablation on the trained substrate was
+killed (zero distillable modules on the ternary core; overfit-and-hurt on the
+latent core). Crystallization needs a redesign, pre-registered separately,
+before that part of the thesis can be revisited.

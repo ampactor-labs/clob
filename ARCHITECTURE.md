@@ -791,9 +791,19 @@ or a measured signal.
   (registered pass ≥ 10×). Limits: one seed, one corpus, d=64;
   embedding/readout stay f32 in both arms; whole-model memory 1.34×.
   Not yet evidence at target scale.
-- **Bet 2: Crystallization produces net predictive gain.** Instrumented.
-  Phase K's `bench-suite` is the A/B harness; Phase L's diagnostic
-  corpus with planted structural patterns will be the first test.
+- **Bet 2: Crystallization produces net predictive gain.** First measured
+  signal — KILL at small scale
+  (`experiments/2026-07-10_phase6_bet2/`, 2026-07-10), the first test on a
+  *trained* substrate (every prior crystallization run was on a random
+  core). Equal-compute A/B on the Phase 6 QAT core: on the deployed ternary
+  view, crystallizing the core's high-error episodes produced zero
+  distillable modules across the whole registered grid (every candidate
+  cluster failed the coherence/MDL gate), so modules-loaded held-out NLL
+  equals modules-cleared (`delta 0` ≤ registered kill line). On the
+  f32-latent view, modules did form and *reduced* held-out capability by
+  3.6% — the overfit-and-drift failure this bet names. Not a proof no
+  variant can work; the capture threshold and the distill target are the
+  named suspects for a future registered run.
 - **Bet 3: Forget without regression.** Instrumented. The ring buffer
   marks consumed episodes; a delay-and-measure test is a follow-on
   in Phase K.
