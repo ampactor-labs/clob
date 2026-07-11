@@ -476,9 +476,14 @@ enum Commands {
         /// Cap on tokens evaluated (0 = all).
         #[arg(long, default_value_t = 0)]
         max_tokens: usize,
-        /// Evaluate the effective-ternary projection instead of the latents.
+        /// Force the effective-ternary projection. Without this or --latent,
+        /// the artifact's stamped deployment view is used (QAT → ternary).
         #[arg(long)]
         ternary: bool,
+        /// Force the f32 latent view (overrides the stamped deployment view).
+        /// Mutually exclusive with --ternary.
+        #[arg(long)]
+        latent: bool,
     },
     /// Measure the core's dynamical regime: largest Lyapunov exponent λ₁
     /// of the token-driven state dynamics, by twin-trajectory (Benettin)
@@ -491,10 +496,14 @@ enum Commands {
         /// A `.dense` trained artifact (Path B) to measure instead of a CoreModel.
         #[arg(long)]
         dense: Option<PathBuf>,
-        /// Measure the effective-ternary projection of a --dense core rather
-        /// than its f32 latents (previews the deployment regime).
+        /// Force the effective-ternary projection of a --dense core. Without
+        /// this or --latent, the artifact's stamped deployment view is used.
         #[arg(long)]
         ternary: bool,
+        /// Force the f32 latent view of a --dense core (overrides the stamped
+        /// deployment view). Mutually exclusive with --ternary.
+        #[arg(long)]
+        latent: bool,
         /// Drive corpus (text, or a pre-encoded `.tokens` cache). Wraps if
         /// shorter than warmup + tokens.
         #[arg(long)]
@@ -687,11 +696,11 @@ fn main() {
                 steps, ternarize_every, qat, log_every, checkpoint_every, &checkpoint_dir, &output,
             );
         }
-        Commands::EvalDense { dense, corpus, tokenizer, window, max_tokens, ternary } => {
-            cmd_eval_dense(&dense, &corpus, &tokenizer, window, max_tokens, ternary);
+        Commands::EvalDense { dense, corpus, tokenizer, window, max_tokens, ternary, latent } => {
+            cmd_eval_dense(&dense, &corpus, &tokenizer, window, max_tokens, ternary, latent);
         }
-        Commands::Regime { model, dense, ternary, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
-            cmd_regime(&model, &dense, ternary, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
+        Commands::Regime { model, dense, ternary, latent, corpus, tokenizer, tokens, warmup, eps, seed, out } => {
+            cmd_regime(&model, &dense, ternary, latent, &corpus, &tokenizer, tokens, warmup, eps, seed, &out);
         }
         Commands::Compile { memory_dir: _, modules_dir } => {
             cmd_compile(&modules_dir);
@@ -2333,10 +2342,34 @@ fn next_module_id(dir: &Path) -> u64 {
     max_id.map(|m| m + 1).unwrap_or(0)
 }
 
+/// Resolve which view of a trained-dense artifact to evaluate. `--ternary` and
+/// `--latent` are explicit overrides (mutually exclusive); with neither, the
+/// artifact's stamped deployment mode decides (QAT → ternary), which fixes the
+/// footgun where a QAT artifact's meaningless latent view was the silent
+/// default. Prints the resolved view to stderr so JSON on stdout stays clean.
+fn resolve_dense_view(mode: clob::learn::train::TrainMode, ternary: bool, latent: bool) -> bool {
+    if ternary && latent {
+        eprintln!("[dense] pass at most one of --ternary / --latent");
+        std::process::exit(2);
+    }
+    let (view_ternary, why) = if ternary {
+        (true, "explicit --ternary")
+    } else if latent {
+        (false, "explicit --latent")
+    } else {
+        (mode.deploys_ternary(), "auto: stamped deployment view")
+    };
+    eprintln!(
+        "[dense] view: {} ({}; trained mode = {:?})",
+        if view_ternary { "ternary" } else { "latent" }, why, mode,
+    );
+    view_ternary
+}
+
 /// Evaluate a trained dense artifact's held-out NLL on a corpus.
 fn cmd_eval_dense(
     dense_path: &PathBuf, corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>,
-    window: usize, max_tokens: usize, ternary: bool,
+    window: usize, max_tokens: usize, ternary: bool, latent: bool,
 ) {
     use clob::learn::backprop::ternarize_matrix_families;
     use clob::learn::train::{eval_nll, unigram_nll, TrainedDense};
@@ -2346,6 +2379,7 @@ fn cmd_eval_dense(
     let art = TrainedDense::from_bytes(&bytes).expect("failed to parse .dense artifact");
 
     let tokens = load_regime_tokens(corpus_path, &tokenizer, art.dims.vocab);
+    let ternary = resolve_dense_view(art.mode, ternary, latent);
     let params = if ternary {
         ternarize_matrix_families(art.dims, &art.latents)
     } else {
@@ -2431,6 +2465,7 @@ fn cmd_train(
             dims,
             latents: latents.to_vec(),
             ternary_effective: clob::learn::backprop::ternarize_matrix_families(dims, latents),
+            mode,
         };
         let path = dir.join("trained.dense");
         if let Err(e) = art.save(&path) {
@@ -2457,6 +2492,7 @@ fn cmd_train(
         dims: result.dims,
         latents: result.latents,
         ternary_effective: result.ternary_effective,
+        mode,
     };
     if let Err(e) = art.save(output) {
         eprintln!("[train] failed to write {:?}: {}", output, e);
@@ -2556,7 +2592,7 @@ fn load_regime_tokens(corpus_path: &PathBuf, tokenizer: &BpeTokenizer, vocab: us
 
 #[allow(clippy::too_many_arguments)]
 fn cmd_regime(
-    model_path: &Option<PathBuf>, dense_path: &Option<PathBuf>, ternary: bool,
+    model_path: &Option<PathBuf>, dense_path: &Option<PathBuf>, ternary: bool, latent: bool,
     corpus_path: &PathBuf, tokenizer_path: &Option<PathBuf>,
     n_tokens: usize, warmup: usize, eps: f32, seed: u64, out: &Option<PathBuf>,
 ) {
@@ -2584,8 +2620,8 @@ fn cmd_regime(
         (None, Some(dp)) => {
             let bytes = std::fs::read(dp).expect("failed to read .dense artifact");
             let art = TrainedDense::from_bytes(&bytes).expect("failed to parse .dense artifact");
+            let ternary = resolve_dense_view(art.mode, ternary, latent);
             let params = if ternary {
-                println!("[regime] measuring the effective-ternary projection (deployment regime)");
                 ternarize_matrix_families(art.dims, &art.latents)
             } else {
                 art.latents.clone()

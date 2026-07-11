@@ -14,14 +14,28 @@
 
 use crate::learn::backprop::{init_dense_params, ternarize_matrix_families, DenseDims, DenseModel};
 
-/// Which weights the training forward/backward pass uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Which weights the training forward/backward pass uses. Also stamped into
+/// the artifact so consumers can pick the deployed view without being told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum TrainMode {
-    /// Train and differentiate the smooth f32 latent surrogate.
+    /// Train and differentiate the smooth f32 latent surrogate. The latents
+    /// are the deployment object.
+    #[default]
     Latent,
     /// Forward/backward through the effective ternary projection, then apply
-    /// those straight-through gradients to the underlying latents.
+    /// those straight-through gradients to the underlying latents. The
+    /// *effective ternary* projection is the deployment object; the latent
+    /// view of a QAT artifact is not the learned model.
     Qat,
+}
+
+impl TrainMode {
+    /// Whether this mode's deployment object is the effective-ternary
+    /// projection (QAT) rather than the raw latents (Latent). Consumers use
+    /// this to auto-select the view that is actually the learned model.
+    pub fn deploys_ternary(self) -> bool {
+        matches!(self, TrainMode::Qat)
+    }
 }
 
 /// Training hyperparameters.
@@ -214,6 +228,11 @@ pub struct TrainedDense {
     pub dims: DenseDims,
     pub latents: Vec<f32>,
     pub ternary_effective: Vec<f32>,
+    /// How this artifact was trained. Determines which view (`latents` vs
+    /// `ternary_effective`) is the deployment object. Old artifacts predate
+    /// this field and deserialize as `Latent`, which is correct for them.
+    #[serde(default)]
+    pub mode: TrainMode,
 }
 
 impl TrainedDense {
@@ -422,5 +441,24 @@ mod tests {
             init_nll,
             final_nll,
         );
+    }
+
+    #[test]
+    fn trained_mode_round_trips_and_picks_deployed_view() {
+        let dims = DenseDims::mini(3);
+        let latents = init_dense_params(dims, 7);
+        let ternary_effective = ternarize_matrix_families(dims, &latents);
+
+        // A QAT artifact deploys its ternary view; a latent artifact deploys
+        // its latents. Both survive a serialize round-trip.
+        let qat = TrainedDense { dims, latents: latents.clone(), ternary_effective: ternary_effective.clone(), mode: TrainMode::Qat };
+        let back = TrainedDense::from_bytes(&qat.to_bytes()).expect("round-trip");
+        assert_eq!(back.mode, TrainMode::Qat);
+        assert!(back.mode.deploys_ternary(), "QAT must auto-select the ternary view");
+
+        let lat = TrainedDense { dims, latents, ternary_effective, mode: TrainMode::Latent };
+        let back = TrainedDense::from_bytes(&lat.to_bytes()).expect("round-trip");
+        assert_eq!(back.mode, TrainMode::Latent);
+        assert!(!back.mode.deploys_ternary(), "latent must auto-select the latent view");
     }
 }
