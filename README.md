@@ -4,6 +4,8 @@ A ternary recurrent intelligence kernel in Rust. The floor hardware is a
 Lenovo T490 (i7-8550U, 16 GB RAM); if it doesn't run there, it doesn't
 count.
 
+**Status: prototype.** The supporting machinery works. The central bet is unproven, and the first real run falsified the thing it was supposed to demonstrate.
+
 The bet: intelligence is compression efficiency per joule. The mechanism:
 a crystallization loop that turns prediction errors into compiled ternary
 modules and discards the raw episodes once the pattern is captured. Every
@@ -87,3 +89,9 @@ gain from frozen hidden states beyond a trained unigram null. The current
 track is Path B: untie and train the recurrent core first, then evaluate
 crystallization again. See `docs/experiments/reservoir-probe.md` and
 `docs/plans/path-b-core-training-build.md`.
+
+## Weak spots
+
+The core is still random and untrained, and the first real run crystallized zero modules. The reservoir probe found no contextual gain from frozen hidden states beyond a trained unigram null, which is the result the whole design was meant to beat.
+
+That is the honest state: a built pipeline around an unvalidated thesis. The current track is Path B, untying and training the recurrent core before evaluating crystallization again. There is no CI.
