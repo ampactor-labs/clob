@@ -90,6 +90,12 @@ track is Path B: untie and train the recurrent core first, then evaluate
 crystallization again. See `docs/experiments/reservoir-probe.md` and
 `docs/plans/path-b-core-training-build.md`.
 
+## Verification
+
+198 `#[test]` functions across the workspace, run with `cargo test`. They cover the ternary kernels, the DSL reduction, the critic heads, and the routing, which is the machinery rather than the thesis.
+
+There is no CI. More to the point, no test can tell you whether the central bet holds: that is what the experiments in `docs/experiments/` are for, and the first one came back negative.
+
 ## Weak spots
 
 The core is still random and untrained, and the first real run crystallized zero modules. The reservoir probe found no contextual gain from frozen hidden states beyond a trained unigram null, which is the result the whole design was meant to beat.
